@@ -9,6 +9,7 @@ import {
   SaveClientProfileInput,
 } from "./client.service.js";
 import { ApiResponse } from "../../types/common.types.js";
+import { requireText, requireWebsite } from "../../config/constants.js";
 
 export const getLoggedInClientProfile: RequestHandler = asyncHandler(
   async (request, response) => {
@@ -41,30 +42,6 @@ interface ClientProfileBody {
   industry?: string;
   companyDescription?: string;
 }
-
-const requireText = (value: string | undefined, fieldName: string): string => {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new ApiError(400, `${fieldName} is required.`);
-  }
-
-  return value.trim();
-};
-
-const requireWebsite = (value: string | undefined): string => {
-  const website = requireText(value, "Company website");
-
-  try {
-    const url = new URL(website);
-
-    if (url.protocol !== "https:") {
-      throw new Error("Unsupported protocol.");
-    }
-  } catch (error) {
-    throw new ApiError(400, "Company website must be a valid HTTP URL.");
-  }
-
-  return website;
-};
 
 export const upsertClientProfile: RequestHandler = asyncHandler(
   async (request, response) => {

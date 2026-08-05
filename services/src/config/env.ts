@@ -30,4 +30,5 @@ export const env = {
     password: process.env.REDIS_PASSWORD || undefined,
     database: parseRedisDatabase(process.env.REDIS_DB),
   },
+  imageKitPrivateKey: process.env.IMAGEKIT_PRIVATE_KEY,
 } as const;

@@ -15,6 +15,13 @@
       "when": 1785603531286,
       "tag": "0001_lovely_sally_floyd",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785854182383,
+      "tag": "0002_flowery_kree",
+      "breakpoints": true
     }
   ]
 }
