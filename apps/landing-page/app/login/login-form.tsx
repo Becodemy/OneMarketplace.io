@@ -82,7 +82,6 @@ export function LoginForm() {
       redirectUrl: "/login",
       redirectCallbackUrl: "/login",
     });
-
     if (error) {
       setIsError(true);
       setStatus(error.message);

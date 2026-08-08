@@ -22,6 +22,34 @@
       "when": 1785854182383,
       "tag": "0002_flowery_kree",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785943071083,
+      "tag": "0003_bored_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785947549388,
+      "tag": "0004_early_sunfire",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785947626172,
+      "tag": "0005_unique_darkhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785947679217,
+      "tag": "0006_strong_magdalene",
+      "breakpoints": true
     }
   ]
 }

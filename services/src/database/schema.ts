@@ -7,29 +7,22 @@ import {
   pgTable,
   text,
   timestamp,
-  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 
 export const accountRole = pgEnum("account_role", ["FREELANCER", "CLIENT"]);
 
-export const accounts = pgTable(
-  "accounts",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    auth_id: text("auth_id").notNull(),
-    email: text("email").notNull(),
-    role: accountRole().default("CLIENT").notNull(),
-    identityVerified: boolean("identityVerified").default(false),
-    paymentMethodVerified: boolean("paymentMethodVerified").default(false),
-    isOnboardingComplete: boolean("isOnboardingComplete").default(false),
-    created_at: timestamp("created_at", { withTimezone: true }),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-  },
-  (table) => [
-    unique("accounts_auth_id_role_unique").on(table.auth_id, table.role),
-  ],
-);
+export const accounts = pgTable("accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  auth_id: text("auth_id").notNull().unique(),
+  email: text("email").notNull(),
+  role: accountRole().default("CLIENT").notNull(),
+  identityVerified: boolean("identityVerified").default(false),
+  paymentMethodVerified: boolean("paymentMethodVerified").default(false),
+  isOnboardingComplete: boolean("isOnboardingComplete").default(false),
+  created_at: timestamp("created_at", { withTimezone: true }),
+  updated_at: timestamp("updated_at", { withTimezone: true }),
+});
 
 export const client_metadata = pgTable("client_metadata", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -105,3 +98,65 @@ export const freelancerPortfolioRelations = relations(
     }),
   }),
 );
+
+export const job_posts = pgTable("job_posts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  client_id: text("client_id")
+    .notNull()
+    .references(() => accounts.auth_id, {
+      onDelete: "cascade",
+    }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  expertise_level: text("expertise_level").notNull(),
+  expected_duration: text("expected_duration").notNull(),
+  skills: text("skills").array().notNull().default([]),
+
+  total_budget: numeric("total_budget", {
+    precision: 9,
+    scale: 2,
+  }).notNull(),
+
+  milestones: jsonb("milestones")
+    .$type<
+      Array<{
+        id: string;
+        title: string;
+        budget: number;
+        dueDate: string;
+      }>
+    >()
+    .notNull(),
+
+  screening_questions: text("screening_questions").array().default([]),
+
+  attachments: jsonb("attachments")
+    .$type<
+      Array<{
+        fileId: string;
+        fileName: string;
+        fileUrl: string;
+        fileType: string;
+        fileSize: number;
+      }>
+    >()
+    .default([]),
+
+  status: text("status").notNull().default("DRAFT"),
+
+  published_at: timestamp("published_at", {
+    withTimezone: true,
+  }),
+
+  hired_at: timestamp("hired_at", {
+    withTimezone: true,
+  }),
+
+  created_at: timestamp("created_at", {
+    withTimezone: true,
+  }).defaultNow(),
+
+  updated_at: timestamp("updated_at", {
+    withTimezone: true,
+  }).defaultNow(),
+});

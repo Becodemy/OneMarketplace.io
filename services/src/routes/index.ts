@@ -4,12 +4,14 @@ import { ApiResponse } from "../types/common.types.js";
 import { authRouter } from "../modules/auth/auth.route.js";
 import { clientRouter } from "../modules/client/client.route.js";
 import { freelancerRouter } from "../modules/freelancer/freelancer.route.js";
+import { jobRouter } from "../modules/jobs/jobs.route.js";
 
 export const apiRouter = Router();
 
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/client", clientRouter);
 apiRouter.use("/freelancer", freelancerRouter);
+apiRouter.use("/jobs", jobRouter);
 
 apiRouter.get("/health", (_request, response) => {
   const body: ApiResponse<{
