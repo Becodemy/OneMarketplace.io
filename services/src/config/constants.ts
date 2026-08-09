@@ -9,8 +9,10 @@ export const getAccountAuthCacheKey = (
   role: "client" | "freelancer",
 ): string => `account:auth:${userId}:${role}`;
 
-
-export const requireText = (value: string | undefined, fieldName: string): string => {
+export const requireText = (
+  value: string | undefined,
+  fieldName: string,
+): string => {
   if (typeof value !== "string" || !value.trim()) {
     throw new ApiError(400, `${fieldName} is required.`);
   }
@@ -33,3 +35,19 @@ export const requireWebsite = (value: string | undefined): string => {
 
   return website;
 };
+
+export const INITIAL_CONNECTS = 60;
+export const PROPOSAL_CONNECTS = 6;
+
+export const CONNECTS_CACHE_TTL_SECONDS = 10 * 60;
+
+export const getConnectsCacheKey = (userId: string): string =>
+  `connects:${userId}:freelancer`;
+
+export const CONNECTS_PLANS = {
+  20: 300,
+  40: 600,
+  80: 1200,
+} as const;
+
+export type ConnectsPlan = keyof typeof CONNECTS_PLANS;

@@ -9,7 +9,7 @@ import {
   saveFreelancerProfile,
 } from "./freelancer.service.js";
 
-const requireFreelancer = (request: Parameters<RequestHandler>[0]) => {
+export const requireFreelancer = (request: Parameters<RequestHandler>[0]) => {
   if (!request.auth) throw new ApiError(401, "Authentication is required.");
   if (request.auth.role !== "freelancer") {
     throw new ApiError(403, "A freelancer account is required.");
@@ -151,7 +151,25 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(
       }),
     };
 
-    const profile = await saveFreelancerProfile(input);
+    const profile = await saveFreelancerProfile(input,request.auth?.isOnboarded);
+    await request.logger.info({
+      message: "Freelancer profile saved",
+      importance: "high",
+      service: "onemarketplace-services",
+      subsystem: "freelancer-onboarding",
+      operation: "save-freelancer-profile",
+      track: {
+        user_id: auth.userId,
+        custom: {
+          session_id: auth.sessionId ?? null,
+          role: auth.role,
+          portfolio_count: input.portfolios.length,
+          skill_count: input.skills.length,
+          language_count: input.languages.length,
+          is_onboarded: true,
+        },
+      },
+    });
 
     const body: ApiResponse<FreelancerProfileData> = {
       success: true,

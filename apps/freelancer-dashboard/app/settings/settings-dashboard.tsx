@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardHeader } from "../_components/dashboard/dashboard-header";
 import { WorkspaceSidebar } from "../_components/dashboard/workspace-sidebar";
@@ -17,6 +17,7 @@ import {
   IdentityVerificationPanel,
   WithdrawalPanel,
 } from "../_components/settings/settings-panels";
+import { useQueryClient } from "@tanstack/react-query";
 
 const validSections: SettingsSectionId[] = [
   "overview",
@@ -32,8 +33,10 @@ const validSections: SettingsSectionId[] = [
 
 export function SettingsDashboard({
   initialSection,
+  paymentStatus,
 }: {
   initialSection?: string;
+  paymentStatus?: string;
 }) {
   const [section, setSection] = useState<SettingsSectionId>(
     validSections.includes(initialSection as SettingsSectionId)
@@ -43,6 +46,16 @@ export function SettingsDashboard({
   const [modal, setModal] = useState<"connects" | "withdraw" | null>(null);
   const [statementOpen, setStatementOpen] = useState(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (paymentStatus !== "success") return;
+
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["connects"] }),
+      queryClient.invalidateQueries({ queryKey: ["connects-history"] }),
+    ]);
+  }, [paymentStatus, queryClient]);
 
   const openSection = (nextSection: SettingsSectionId) => {
     setSection(nextSection);
@@ -57,9 +70,16 @@ export function SettingsDashboard({
           <WorkspaceSidebar />
           <div className="min-w-0">
             <div>
-              <p className="text-xs font-semibold tracking-[0.14em] text-[#62805f] uppercase">Account center</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">Settings</h1>
-              <p className="mt-2 text-sm text-[#72776f]">Manage your finances, account preferences, security, and marketplace activity.</p>
+              <p className="text-xs font-semibold tracking-[0.14em] text-[#62805f] uppercase">
+                Account center
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">
+                Settings
+              </h1>
+              <p className="mt-2 text-sm text-[#72776f]">
+                Manage your finances, account preferences, security, and
+                marketplace activity.
+              </p>
             </div>
 
             <div className="mt-8 grid items-start gap-5 lg:grid-cols-[235px_minmax(0,1fr)]">
@@ -67,20 +87,41 @@ export function SettingsDashboard({
                 <SettingsNavigation active={section} onChange={openSection} />
               </div>
               <div className="min-w-0">
-                {section === "overview" && <FinanceOverview onOpenSection={openSection} onBuyConnects={() => setModal("connects")} onWithdraw={() => setModal("withdraw")} />}
-                {section === "connects" && <ConnectsPanel onBuy={() => setModal("connects")} />}
-                {section === "earnings" && <EarningsPanel onWithdraw={() => setModal("withdraw")} onDownloadStatement={() => setStatementOpen(true)} />}
-                {section === "withdrawal" && <WithdrawalPanel onWithdraw={() => setModal("withdraw")} />}
+                {section === "overview" && (
+                  <FinanceOverview
+                    onOpenSection={openSection}
+                    onBuyConnects={() => setModal("connects")}
+                    onWithdraw={() => setModal("withdraw")}
+                  />
+                )}
+                {section === "connects" && (
+                  <ConnectsPanel onBuy={() => setModal("connects")} />
+                )}
+                {section === "earnings" && (
+                  <EarningsPanel
+                    onWithdraw={() => setModal("withdraw")}
+                    onDownloadStatement={() => setStatementOpen(true)}
+                  />
+                )}
+                {section === "withdrawal" && (
+                  <WithdrawalPanel onWithdraw={() => setModal("withdraw")} />
+                )}
                 {section === "agency" && <AgencyPanel />}
                 {section === "verification" && <IdentityVerificationPanel />}
-                {["tax", "security", "notifications"].includes(section) && <AccountPanel kind={section as "tax" | "security" | "notifications"} />}
+                {["tax", "security", "notifications"].includes(section) && (
+                  <AccountPanel
+                    kind={section as "tax" | "security" | "notifications"}
+                  />
+                )}
               </div>
             </div>
           </div>
         </div>
       </main>
       {modal && <FinanceModal mode={modal} onClose={() => setModal(null)} />}
-      {statementOpen && <EarningsStatementModal onClose={() => setStatementOpen(false)} />}
+      {statementOpen && (
+        <EarningsStatementModal onClose={() => setStatementOpen(false)} />
+      )}
     </div>
   );
 }

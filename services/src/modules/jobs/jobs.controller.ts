@@ -139,6 +139,28 @@ export const createClientJobPost: RequestHandler = asyncHandler(
       published_at: data.status === "PUBLISHED" ? new Date() : null,
     });
 
+    if (job) {
+      await request.logger.info({
+        message: "Client job post created",
+        importance: "critical",
+        service: "onemarketplace-services",
+        subsystem: "job-posts",
+        operation: "create-job-post",
+        track: {
+          user_id: auth.userId,
+          custom: {
+            session_id: auth.sessionId ?? null,
+            job_id: job.id,
+            status: job.status,
+            total_budget: job.total_budget,
+            currency: "USD",
+            milestone_count: job.milestones.length,
+            attachment_count: job.attachments?.length ?? 0,
+          },
+        },
+      });
+    }
+
     response
       .status(201)
       .json({ success: true, message: "Job post created.", data: job });
@@ -164,11 +186,31 @@ export const getClientJobPosts: RequestHandler = asyncHandler(
 export const editClientJobPost: RequestHandler = asyncHandler(
   async (request, response) => {
     const auth = requireClient(request);
+    const data = buildJobData(request.body as Record<string, unknown>);
     const job = await updateJobPost(
       auth.userId,
       requireText(request.params.jobId, "Job post id"),
-      buildJobData(request.body as Record<string, unknown>),
+      data,
     );
+    await request.logger.info({
+      message: "Client job post updated",
+      importance: "high",
+      service: "onemarketplace-services",
+      subsystem: "job-posts",
+      operation: "update-job-post",
+      track: {
+        user_id: auth.userId,
+        custom: {
+          session_id: auth.sessionId ?? null,
+          job_id: job.id,
+          status: job.status,
+          total_budget: job.total_budget,
+          milestone_count: job.milestones.length,
+          attachment_count: job.attachments?.length ?? 0,
+          change_category: "material-update",
+        },
+      },
+    });
     response
       .status(200)
       .json({ success: true, message: "Job post updated.", data: job });
@@ -178,10 +220,26 @@ export const editClientJobPost: RequestHandler = asyncHandler(
 export const removeClientJobPost: RequestHandler = asyncHandler(
   async (request, response) => {
     const auth = requireClient(request);
-    await deleteJobPost(
+    const job = await deleteJobPost(
       auth.userId,
       requireText(request.params.jobId, "Job post id"),
     );
+    await request.logger.audit({
+      message: "Client job post deleted",
+      importance: "high",
+      service: "onemarketplace-services",
+      subsystem: "job-posts",
+      operation: "delete-job-post",
+      track: {
+        user_id: auth.userId,
+        custom: {
+          session_id: auth.sessionId ?? null,
+          job_id: job.id,
+          previous_status: job.status,
+          attachment_count: job.attachments?.length ?? 0,
+        },
+      },
+    });
     response.status(200).json({ success: true, message: "Job post deleted." });
   },
 );

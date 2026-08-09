@@ -68,6 +68,21 @@ export const upsertClientProfile: RequestHandler = asyncHandler(
     };
 
     const profile = await saveClientProfile(input);
+    await request.logger.info({
+      message: "Client profile saved",
+      importance: "high",
+      service: "onemarketplace-services",
+      subsystem: "client-onboarding",
+      operation: "save-client-profile",
+      track: {
+        user_id: request.auth.userId,
+        custom: {
+          session_id: request.auth.sessionId ?? null,
+          role: request.auth.role,
+          is_onboarded: profile.isOnboarded,
+        },
+      },
+    });
     const responseBody: ApiResponse<ClientProfileData> = {
       success: true,
       message: "Client profile saved.",

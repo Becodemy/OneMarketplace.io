@@ -33,7 +33,26 @@ export const signup: RequestHandler = asyncHandler(
     if (!request.auth) {
       throw new ApiError(401, "Authentication is required.");
     }
+    const accountPreexisted = request.auth.accountExists;
     await receiveSignup(request.auth);
+
+    if (!accountPreexisted) {
+      await request.logger.info({
+        message: "Marketplace account provisioned",
+        importance: "critical",
+        service: "onemarketplace-services",
+        subsystem: "authentication",
+        operation: "provision-account",
+        track: {
+          user_id: request.auth.userId,
+          custom: {
+            session_id: request.auth.sessionId ?? null,
+            role: request.auth.role,
+            account_preexisted: accountPreexisted,
+          },
+        },
+      });
+    }
 
     const body: ApiResponse<never> = {
       success: true,

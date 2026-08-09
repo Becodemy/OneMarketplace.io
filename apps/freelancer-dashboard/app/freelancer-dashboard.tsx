@@ -15,9 +15,13 @@ import { dashboardJobs } from "./_components/jobs/jobs-data";
 import { ProposalModal } from "./_components/jobs/proposal-modal";
 import type { Job } from "./_components/jobs/types";
 import { redirect } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth, useUser } from "@clerk/nextjs";
 
 export function FreelancerDashboard() {
   const [search, setSearch] = useState("");
+  const { user } = useUser();
+  const { getToken } = useAuth();
   const [activeTab, setActiveTab] = useState("Best matches");
   const [saved, setSaved] = useState<number[]>([]);
   const [proposalJob, setProposalJob] = useState<Job | null>(null);
@@ -29,6 +33,34 @@ export function FreelancerDashboard() {
     Number(Boolean(filters.minBudget || filters.maxBudget)) +
     Number(filters.proposalRange !== "Any number") +
     Number(filters.verifiedOnly);
+
+  const { data: connectsMetadata, isLoading: connectsLoading } = useQuery({
+    queryKey: ["connects"],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const token = await getToken();
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/connects?role=freelancer`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || "The client profile could not be loaded.",
+        );
+      }
+
+      return result.data;
+    },
+  });
 
   const visibleJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -212,7 +244,7 @@ export function FreelancerDashboard() {
               <div className="mt-5 border-t border-black/7 pt-4">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[#777c74]">Available Connects</span>
-                  <strong>64</strong>
+                  <strong>{connectsMetadata?.connects || "..."}</strong>
                 </div>
                 <button
                   type="button"

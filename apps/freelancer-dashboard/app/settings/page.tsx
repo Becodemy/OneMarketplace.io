@@ -5,15 +5,16 @@ import { SettingsDashboard } from "./settings-dashboard";
 
 export const metadata: Metadata = {
   title: "Settings | OneMarketplace.io",
-  description: "Manage your freelancer account, finances, Connects, and security.",
+  description:
+    "Manage your freelancer account, finances, Connects, and security.",
 };
 
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ section?: string }>;
+  searchParams: Promise<{ section?: string; payment?: string }>;
 }) {
-  const { section } = await searchParams;
+  const { section, payment } = await searchParams;
   const validSection = settingsSections.some((item) => item.id === section);
 
   if (!validSection) {
@@ -24,6 +25,7 @@ export default async function SettingsPage({
     <SettingsDashboard
       key={section}
       initialSection={section}
+      paymentStatus={payment}
     />
   );
 }

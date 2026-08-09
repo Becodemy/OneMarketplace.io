@@ -20,6 +20,7 @@ import {
   ACCOUNT_AUTH_CACHE_TTL_SECONDS,
   getAccountAuthCacheKey,
 } from "../../config/constants.js";
+import { addConnects } from "../connects/connects.service.js";
 
 export const getFreelancerProfile = async (
   userId: string,
@@ -100,6 +101,7 @@ const uploadPortfolioImages = async (
 
 export const saveFreelancerProfile = async (
   input: SaveFreelancerProfileInput,
+  isOnboarded: Boolean | undefined,
 ): Promise<FreelancerProfileData> => {
   const existingImages = await db
     .select({ cover_image: freelancer_portfolios.cover_image })
@@ -208,6 +210,14 @@ export const saveFreelancerProfile = async (
       .filter((fileId) => fileId && !retainedImageIds.has(fileId))
       .map((fileId) => imageKit.files.delete(fileId)),
   );
+
+  try {
+    if (!isOnboarded) {
+      await addConnects(input.userId);
+    }
+  } catch (error) {
+    console.log(error, "onboarding freelancer connects adding error.");
+  }
 
   await redis.setEx(
     getAccountAuthCacheKey(input.userId, "freelancer"),
