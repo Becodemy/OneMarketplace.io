@@ -34,4 +34,5 @@ export const env = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY,
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   freelancerDashboard: process.env.FREELANCER_DASHBOARD,
+  natsUrl: process.env.NATS_URL ?? "nats://localhost:4222",
 } as const;

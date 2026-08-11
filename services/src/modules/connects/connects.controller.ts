@@ -12,7 +12,10 @@ import { ApiError } from "../../utils/api-error.js";
 import { env } from "../../config/env.js";
 import { stripe } from "../../config/stripe.js";
 
-export const getAvailableConnects: RequestHandler = (request, response) => {
+export const getAvailableConnects: RequestHandler = async (
+  request,
+  response,
+) => {
   requireFreelancer(request);
 
   const body: ApiResponse<{ connects: number }> = {
