@@ -3,44 +3,14 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
 
-const completedWork = [
-  {
-    project: "Real-time product workspace",
-    client: "Northstar Labs",
-    completed: "July 2026",
-    budget: "$11,500",
-    rating: "5.0",
-    review:
-      "Excellent product judgment, communication, and execution. Every milestone was thoughtful, polished, and delivered as promised.",
-  },
-  {
-    project: "Research platform architecture",
-    client: "Lumen Research",
-    completed: "May 2026",
-    budget: "$8,400",
-    rating: "4.9",
-    review:
-      "A deeply capable partner who simplified a difficult product and left our team with a dependable foundation.",
-  },
-  {
-    project: "Healthcare operations dashboard",
-    client: "Wellmade Health",
-    completed: "February 2026",
-    budget: "$6,800",
-    rating: "5.0",
-    review:
-      "Reliable from discovery through delivery. The final product was accessible, fast, and easy for our team to maintain.",
-  },
-  {
-    project: "Commerce design system",
-    client: "Aster Technologies",
-    completed: "November 2025",
-    budget: "$9,200",
-    rating: "4.8",
-    review:
-      "Strong communication and excellent attention to detail. The reusable system made our subsequent releases much faster.",
-  },
-];
+const completedWork: Array<{
+  project: string;
+  client: string;
+  completed: string;
+  budget: string;
+  rating: string;
+  review: string;
+}> = [];
 
 const itemsPerPage = 2;
 
@@ -107,9 +77,14 @@ export function WorkHistoryPagination({
             </p>
           </article>
         ))}
+        {!visibleWork.length && (
+          <p className="rounded-xl border border-dashed border-black/10 p-8 text-center text-sm text-[#838980]">
+            No completed work yet.
+          </p>
+        )}
       </div>
 
-      <div className="mt-5 flex flex-col gap-3 border-t border-black/7 pt-5 sm:flex-row sm:items-center sm:justify-between">
+      {!!completedWork.length && <div className="mt-5 flex flex-col gap-3 border-t border-black/7 pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-[#838980]">
           Showing {pageStart + 1}–
           {Math.min(pageStart + itemsPerPage, completedWork.length)} of{" "}
@@ -159,7 +134,7 @@ export function WorkHistoryPagination({
             <Icon icon="solar:alt-arrow-right-linear" width="16" />
           </button>
         </nav>
-      </div>
+      </div>}
     </section>
   );
 }

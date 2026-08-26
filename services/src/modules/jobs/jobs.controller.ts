@@ -6,8 +6,12 @@ import {
   createJobPost,
   deleteJobPost,
   getJobPosts,
+  getSavedJobPosts,
+  removeSavedJobPost,
+  saveJobPost,
   updateJobPost,
 } from "./jobs.service.js";
+import { requireFreelancer } from "../freelancer/freelancer.controller.js";
 
 const requireClient = (request: Parameters<RequestHandler>[0]) => {
   const auth = request.auth!;
@@ -241,5 +245,47 @@ export const removeClientJobPost: RequestHandler = asyncHandler(
       },
     });
     response.status(200).json({ success: true, message: "Job post deleted." });
+  },
+);
+
+export const saveFreelancerJobPost: RequestHandler = asyncHandler(
+  async (request, response) => {
+    const auth = requireFreelancer(request);
+    const savedJob = await saveJobPost(
+      auth.userId,
+      requireText(request.params.jobId, "Job post id"),
+    );
+    response.status(201).json({
+      success: true,
+      message: "Job post saved.",
+      data: savedJob,
+    });
+  },
+);
+
+export const getFreelancerSavedJobPosts: RequestHandler = asyncHandler(
+  async (request, response) => {
+    const auth = requireFreelancer(request);
+    const jobs = await getSavedJobPosts(auth.userId);
+    response.status(200).json({
+      success: true,
+      message: "Saved job posts retrieved.",
+      data: jobs,
+    });
+  },
+);
+
+export const unsaveFreelancerJobPost: RequestHandler = asyncHandler(
+  async (request, response) => {
+    const auth = requireFreelancer(request);
+    const savedJob = await removeSavedJobPost(
+      auth.userId,
+      requireText(request.params.jobId, "Job post id"),
+    );
+    response.status(200).json({
+      success: true,
+      message: "Job post removed from saved jobs.",
+      data: savedJob,
+    });
   },
 );

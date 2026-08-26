@@ -15,6 +15,7 @@ type JobPost = {
   skills: string[];
   total_budget: string;
   status: string;
+  proposalCount?: number;
   created_at: string | null;
 };
 
@@ -126,9 +127,9 @@ const JobPostsList = () => {
             </div>
 
             <div className="mt-5 grid grid-cols-3 gap-3 border-t border-black/7 pt-4 sm:max-w-md">
-              {["Proposals", "Shorlisted", "Hires"].map((label) => (
-                <JobStat key={label} label={label} />
-              ))}
+              <JobStat label={"Proposals"} value={job.proposalCount || 0} />
+              <JobStat label={"Shorlisted"} value={0} />
+              <JobStat label={"Hires"} value={0} />
             </div>
           </article>
         );
@@ -139,10 +140,10 @@ const JobPostsList = () => {
 
 export default JobPostsList;
 
-function JobStat({ label }: { label: string }) {
+function JobStat({ label, value }: { value: number; label: string }) {
   return (
     <div>
-      <p className="text-base font-semibold">0</p>
+      <p className="text-base font-semibold">{value}</p>
       <p className="mt-1 text-[10px] text-[#8a8f87]">{label}</p>
     </div>
   );

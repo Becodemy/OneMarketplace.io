@@ -7,6 +7,7 @@ import { freelancerRouter } from "../modules/freelancer/freelancer.route.js";
 import { jobRouter } from "../modules/jobs/jobs.route.js";
 import { connectsRouter } from "../modules/connects/connects.route.js";
 import { notificationRouter } from "../modules/notifications/notifications.route.js";
+import { proposalRouter } from "../modules/proposals/proposals.route.js";
 
 export const apiRouter = Router();
 
@@ -16,6 +17,7 @@ apiRouter.use("/freelancer", freelancerRouter);
 apiRouter.use("/jobs", jobRouter);
 apiRouter.use("/connects", connectsRouter);
 apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/proposals", proposalRouter);
 
 apiRouter.get("/health", (_request, response) => {
   const body: ApiResponse<{

@@ -1,35 +1,148 @@
 "use client";
 
 import { Icon } from "@iconify/react";
+import { useAuth } from "@clerk/nextjs";
+import { useQuery } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  clientJobs,
-  clientProposals,
-  type ClientJob,
-  type ClientProposal,
-} from "../data/client-data";
+import { type ClientJob, type ClientProposal } from "../data/client-data";
+import { countries } from "@/utils/countries";
+import Image from "next/image";
 
 const proposalsPerPage = 2;
+const emptyProposalData: any[] = [];
+const emptyJobsData: any[] = [];
 
 export function ProposalsDashboard({
   initialJobId = null,
 }: {
-  initialJobId?: number | null;
+  initialJobId?: string | null;
 }) {
   const router = useRouter();
-  const [selectedJobId, setSelectedJobId] = useState<number | null>(
-    initialJobId,
-  );
+  const { getToken } = useAuth();
+  const selectedJobId = initialJobId;
   const [filter, setFilter] = useState("All");
-  const [proposals, setProposals] = useState(clientProposals);
+  const [proposals, setProposals] = useState<ClientProposal[]>([]);
   const [selectedProposal, setSelectedProposal] =
     useState<ClientProposal | null>(null);
   const [notice, setNotice] = useState("");
   const [page, setPage] = useState(1);
 
-  const selectedJob = clientJobs.find((job) => job.id === selectedJobId);
+  const { data: jobs = emptyJobsData, isLoading: jobsLoading } = useQuery<
+    ClientJob[]
+  >({
+    queryKey: ["client-job-posts"],
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/jobs?role=client`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      return result.data.map((job: any) => ({
+        id: job.id,
+        title: job.title,
+        status:
+          job.status === "PUBLISHED"
+            ? "Open"
+            : job.status === "DRAFT"
+              ? "Draft"
+              : "Closed",
+        posted: job.created_at
+          ? `${formatDistanceToNow(new Date(job.created_at))} ago`
+          : "Recently",
+        budget: Number(job.total_budget),
+        level: job.expertise_level,
+        duration: job.expected_duration,
+        description: job.description,
+        skills: job.skills,
+        proposals: job.proposalCount ?? 0,
+        shortlisted: job.shortlistCount ?? 0,
+        hires: job.status === "HIRED" ? 1 : 0,
+        visibility: "Marketplace",
+        screeningQuestions: job.screening_questions ?? [],
+        milestones: (job.milestones ?? []).map((milestone: any) => ({
+          id: milestone.id,
+          title: milestone.title,
+          amount: Number(milestone.budget),
+          due: milestone.dueDate,
+        })),
+      }));
+    },
+  });
+  const { data: proposalData = emptyProposalData,isLoading: proposalsLoading } = useQuery<any[]>({
+    queryKey: ["client-proposals", selectedJobId],
+    enabled: Boolean(selectedJobId),
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/proposals?role=client&jobId=${selectedJobId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      return result.data;
+    },
+  });
+  useEffect(() => {
+    const job = jobs.find((item) => String(item.id) === selectedJobId);
+
+    setProposals(
+      proposalData.map((proposal) => ({
+        id: proposal.id,
+        jobId: selectedJobId!,
+        freelancerId: proposal.freelancerId,
+        bidder: proposal.senderName ?? "Freelancer",
+        avatarUrl: proposal.avatar,
+        initials: (proposal.senderName ?? "Freelancer")
+          .split(" ")
+          .map((part: string) => part[0])
+          .join("")
+          .slice(0, 2),
+        accountType: "Freelancer",
+        title: proposal.professionalTitle ?? "Freelancer",
+        location:
+          [
+            proposal.city,
+            countries.find((country) => country.code === proposal.country)
+              ?.name ?? proposal.country,
+          ]
+            .filter(Boolean)
+            .join(", ") || "Location unavailable",
+        verified: proposal.verified ?? false,
+        online: false,
+        rating: 0,
+        jobSuccess: 0,
+        completedProjects: 0,
+        bid: Number(proposal.bidAmount),
+        duration: proposal.duration,
+        submitted: proposal.submittedAt
+          ? `${formatDistanceToNow(new Date(proposal.submittedAt))} ago`
+          : "recently",
+        coverLetter: proposal.coverLetter,
+        skills: proposal.skills ?? [],
+        milestonePlan:
+          job?.milestones?.map((milestone: any) => ({
+            title: milestone.title,
+            amount: milestone.amount,
+            duration: milestone.due,
+          })) ?? [],
+        screeningAnswers: proposal.screeningAnswers ?? [],
+        status: proposal.isShortlisted
+          ? "Shortlisted"
+          : proposal.status === "VIEWED"
+            ? "New"
+            : proposal.status === "INTERVIEWED"
+              ? "Interview"
+              : "New",
+      })),
+    );
+  }, [jobs, proposalData, selectedJobId]);
+
+  const selectedJob = jobs.find((job) => String(job.id) === selectedJobId);
   const filteredProposals = proposals.filter(
     (proposal) =>
       proposal.jobId === selectedJobId &&
@@ -53,7 +166,7 @@ export function ProposalsDashboard({
   }, [notice]);
 
   const updateStatus = (
-    proposalId: number,
+    proposalId: number | string,
     status: ClientProposal["status"],
   ) => {
     setProposals((current) =>
@@ -83,21 +196,81 @@ export function ProposalsDashboard({
     );
   };
 
+  const handleProposalUpdateStatus = async (proposal: ClientProposal) => {
+    setSelectedProposal(proposal);
+
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/proposals/${proposal.id}/status?role=client`,
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(
+          result.message || "Proposal status could not be updated.",
+        );
+      }
+    } catch (error) {
+      console.error("Proposal view status update failed.", error);
+    }
+  };
+
+  const handleShortList = async (proposal: ClientProposal) => {
+    const previousStatus = proposal.status;
+    updateStatus(proposal.id, "Shortlisted");
+
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/proposals/${proposal.id}/status?role=client`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ isShortlisted: true }),
+        },
+      );
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.message || "Proposal could not be shortlisted.");
+      }
+    } catch (error) {
+      updateStatus(proposal.id, previousStatus);
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Proposal could not be shortlisted.",
+      );
+    }
+  };
+
   if (!selectedJob) {
+    if (jobsLoading)
+      return (
+        <div className="mt-8 animate-pulse rounded-2xl border border-black/8 bg-white p-6">
+          <div className="h-3 w-20 rounded bg-[#e8ebe6]" />
+          <div className="mt-4 h-5 w-72 max-w-full rounded bg-[#dde2db]" />
+          <div className="mt-3 h-3 w-48 rounded bg-[#ecefeb]" />
+          <div className="mt-6 h-3 w-full rounded bg-[#e8ebe6]" />
+          <div className="mt-3 h-3 w-3/4 rounded bg-[#eef0ec]" />
+        </div>
+      );
     return (
       <>
         <PageHeading />
         <section className="mt-8 grid gap-4">
-          {clientJobs.map((job) => (
+          {jobs.map((job) => (
             <JobProposalCard
               key={job.id}
               job={job}
-              onView={() => {
-                setSelectedJobId(job.id);
-                setFilter("All");
-                setPage(1);
-                setNotice("");
-              }}
+              onView={() => router.push(`/proposals/${job.id}`)}
             />
           ))}
         </section>
@@ -107,18 +280,13 @@ export function ProposalsDashboard({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          setSelectedJobId(null);
-          setPage(1);
-          setNotice("");
-        }}
+      <Link
+        href="/proposals"
         className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-[#52784f]"
       >
         <Icon icon="solar:arrow-left-linear" width="15" />
         Back to job posts
-      </button>
+      </Link>
 
       <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
@@ -153,13 +321,25 @@ export function ProposalsDashboard({
 
       <section className="mt-6 rounded-2xl border border-black/8 bg-white p-5 sm:p-6">
         <div className="grid gap-4 sm:grid-cols-4">
-          <JobMetric label="Fixed budget" value={`$${selectedJob.budget.toLocaleString()}`} />
+          <JobMetric
+            label="Fixed budget"
+            value={`$${selectedJob.budget.toLocaleString()}`}
+          />
           <JobMetric label="Proposals" value={String(selectedJob.proposals)} />
-          <JobMetric label="Shortlisted" value={String(selectedJob.shortlisted)} />
+          <JobMetric
+            label="Shortlisted"
+            value={String(
+              proposals.filter(
+                (proposal) =>
+                  proposal.jobId === selectedJob.id &&
+                  proposal.status === "Shortlisted",
+              ).length,
+            )}
+          />
           <JobMetric label="Hires" value={String(selectedJob.hires)} />
         </div>
         <div className="mt-5 flex flex-wrap gap-2 border-t border-black/7 pt-5">
-          {selectedJob.skills.map((skill) => (
+          {selectedJob.skills.map((skill: any) => (
             <span
               key={skill}
               className="rounded-lg bg-[#f0f3ee] px-2.5 py-1.5 text-[10px] text-[#657062]"
@@ -189,38 +369,36 @@ export function ProposalsDashboard({
             "Offer sent",
             "Rejected",
             "Hired",
-          ].map(
-            (item) => {
-              const count =
-                item === "All"
-                  ? proposals.filter(
-                      (proposal) => proposal.jobId === selectedJob.id,
-                    ).length
-                  : proposals.filter(
-                      (proposal) =>
-                        proposal.jobId === selectedJob.id &&
-                        proposal.status === item,
-                    ).length;
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => {
-                    setFilter(item);
-                    setPage(1);
-                  }}
-                  className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg px-3 text-xs font-semibold ${
-                    filter === item
-                      ? "bg-[#edf4ea] text-[#4e774b]"
-                      : "bg-white text-[#6f756d] hover:bg-black/3"
-                  }`}
-                >
-                  {item}
-                  <span className="text-[9px] opacity-65">{count}</span>
-                </button>
-              );
-            },
-          )}
+          ].map((item) => {
+            const count =
+              item === "All"
+                ? proposals.filter(
+                    (proposal) => proposal.jobId === selectedJob.id,
+                  ).length
+                : proposals.filter(
+                    (proposal) =>
+                      proposal.jobId === selectedJob.id &&
+                      proposal.status === item,
+                  ).length;
+            return (
+              <button
+                key={item}
+                type="button"
+                onClick={() => {
+                  setFilter(item);
+                  setPage(1);
+                }}
+                className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg px-3 text-xs font-semibold ${
+                  filter === item
+                    ? "bg-[#edf4ea] text-[#4e774b]"
+                    : "bg-white text-[#6f756d] hover:bg-black/3"
+                }`}
+              >
+                {item}
+                <span className="text-[9px] opacity-65">{count}</span>
+              </button>
+            );
+          })}
         </div>
         <p className="text-xs text-[#858a82]">
           {filteredProposals.length
@@ -233,15 +411,18 @@ export function ProposalsDashboard({
       </div>
 
       <div className="mt-5 grid gap-4">
-        {visibleProposals.map((proposal) => (
-          <ProposalCard
-            key={proposal.id}
-            proposal={proposal}
-            onView={() => setSelectedProposal(proposal)}
-            onShortlist={() => updateStatus(proposal.id, "Shortlisted")}
-          />
-        ))}
-        {!visibleProposals.length && (
+        {proposalsLoading ? (
+          <ProposalSkeleton />
+        ) : visibleProposals.length ? (
+          visibleProposals.map((proposal) => (
+            <ProposalCard
+              key={proposal.id}
+              proposal={proposal}
+              onView={() => handleProposalUpdateStatus(proposal)}
+              onShortlist={() => handleShortList(proposal)}
+            />
+          ))
+        ) : (
           <div className="rounded-2xl border border-dashed border-black/10 bg-white p-12 text-center">
             <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#edf4ea] text-[#52784f]">
               <Icon icon="solar:users-group-rounded-linear" width="26" />
@@ -460,8 +641,17 @@ function ProposalCard({
     <article className="rounded-2xl border border-black/8 bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row">
         <div className="flex min-w-0 flex-1 gap-4">
-          <span className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#527a73] text-sm font-semibold text-white">
-            {proposal.initials}
+          <span className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#527a73] text-sm font-semibold text-white">
+            {proposal.avatarUrl ? (
+              <Image
+                src={proposal.avatarUrl}
+                alt={proposal.bidder}
+                fill
+                className="rounded-full object-cover"
+              />
+            ) : (
+              proposal.initials
+            )}
             {proposal.online && (
               <span className="absolute right-0 bottom-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-[#5ca568]" />
             )}
@@ -526,12 +716,6 @@ function ProposalCard({
           >
             View proposal
           </button>
-          <Link
-            href="/messages"
-            className="h-10 rounded-xl border border-black/10 px-4 py-3 text-xs font-semibold"
-          >
-            Message
-          </Link>
           {proposal.status !== "Shortlisted" && (
             <button
               type="button"
@@ -584,9 +768,7 @@ function ProposalDrawer({
   return (
     <div
       className="fixed inset-0 z-50 bg-black/25"
-      onMouseDown={(event) =>
-        event.target === event.currentTarget && onClose()
-      }
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <aside className="absolute top-0 right-0 h-full w-full max-w-2xl overflow-y-auto bg-white p-5 shadow-2xl sm:p-7">
         <div className="flex justify-between gap-4">
@@ -623,10 +805,7 @@ function ProposalDrawer({
           <h3 className="text-sm font-semibold">Proposed milestones</h3>
           <div className="mt-3 divide-y divide-black/6 rounded-xl border border-black/7">
             {proposal.milestonePlan.map((item) => (
-              <div
-                key={item.title}
-                className="flex justify-between gap-4 p-4"
-              >
+              <div key={item.title} className="flex justify-between gap-4 p-4">
                 <div>
                   <p className="text-xs font-semibold">{item.title}</p>
                   <p className="mt-1 text-[10px] text-[#858a82]">
@@ -640,6 +819,25 @@ function ProposalDrawer({
             ))}
           </div>
         </section>
+
+        {!!proposal.screeningAnswers?.length && (
+          <section className="mt-6">
+            <h3 className="text-sm font-semibold">Screening answers</h3>
+            <div className="mt-3 grid gap-3">
+              {proposal.screeningAnswers.map((item) => (
+                <div
+                  key={item.question}
+                  className="rounded-xl border border-black/7 p-4"
+                >
+                  <p className="text-xs font-semibold">{item.question}</p>
+                  <p className="mt-2 text-sm leading-6 text-[#686e66]">
+                    {item.answer}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         <a
           href={getProfileHref(proposal)}
           target="_blank"
@@ -758,8 +956,24 @@ function ProposalDrawer({
   );
 }
 
+function ProposalSkeleton() {
+  return (
+    <div className="animate-pulse rounded-2xl border border-black/8 bg-white p-6">
+      <div className="flex gap-4">
+        <div className="h-14 w-14 rounded-2xl bg-[#e5e9e3]" />
+        <div className="flex-1">
+          <div className="h-4 w-40 rounded bg-[#dde2db]" />
+          <div className="mt-3 h-3 w-56 rounded bg-[#ecefeb]" />
+        </div>
+      </div>
+      <div className="mt-6 h-3 w-full rounded bg-[#e8ebe6]" />
+      <div className="mt-3 h-3 w-3/4 rounded bg-[#eef0ec]" />
+    </div>
+  );
+}
+
 function getProfileHref(proposal: ClientProposal) {
   return proposal.accountType === "Agency"
     ? `/agency/${proposal.id}`
-    : `/talent/${proposal.id}`;
+    : `/talent/${proposal.freelancerId}`;
 }

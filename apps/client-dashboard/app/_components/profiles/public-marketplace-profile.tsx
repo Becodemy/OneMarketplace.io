@@ -3,12 +3,15 @@ import Link from "next/link";
 import type { ClientProposal } from "../data/client-data";
 import { AgencyMembersPagination } from "./agency-members-pagination";
 import { WorkHistoryPagination } from "./work-history-pagination";
+import Image from "next/image";
 
-const portfolio = [
+const agencyPortfolio = [
   {
     title: "Collaborative analytics workspace",
     category: "SaaS product",
     result: "Used by 4,000+ product teams",
+    imageUrl: null,
+    liveUrl: null,
     icon: "solar:chart-square-linear",
     tone: "from-[#dcebe2] to-[#abcbb8]",
   },
@@ -16,6 +19,8 @@ const portfolio = [
     title: "AI-assisted research workflow",
     category: "AI application",
     result: "Reduced research review time by 42%",
+    imageUrl: null,
+    liveUrl: null,
     icon: "solar:magic-stick-3-linear",
     tone: "from-[#e6e2f1] to-[#beb5d8]",
   },
@@ -28,6 +33,17 @@ export function PublicMarketplaceProfile({
 }) {
   const agency = profile.accountType === "Agency";
   const firstName = profile.bidder.split(" ")[0];
+  const portfolio = agency
+    ? agencyPortfolio
+    : (profile.portfolios ?? []).map((project) => ({
+        title: project.title,
+        category: project.category,
+        result: project.description,
+        imageUrl: project.cover_image.url,
+        liveUrl: project.live_url,
+        icon: "solar:code-square-linear",
+        tone: "from-[#dcebe2] to-[#abcbb8]",
+      }));
 
   return (
     <>
@@ -65,7 +81,17 @@ export function PublicMarketplaceProfile({
                   agency ? "rounded-3xl" : "rounded-full"
                 }`}
               >
-                {profile.initials}
+                {profile.avatarUrl ? (
+                  <Image
+                    src={profile.avatarUrl}
+                    alt={profile.bidder}
+                    fill
+                    sizes="112px"
+                    className="rounded-full object-cover"
+                  />
+                ) : (
+                  profile.initials
+                )}
               </span>
               {profile.online && (
                 <span className="absolute right-1 bottom-1 h-5 w-5 rounded-full border-4 border-white bg-[#59a05d]" />
@@ -91,12 +117,15 @@ export function PublicMarketplaceProfile({
             <div className="mt-6 grid grid-cols-3 border-y border-black/7 py-4">
               <Stat value={`${profile.jobSuccess}%`} label="Job success" />
               <Stat value={String(profile.rating)} label="Rating" bordered />
-              <Stat value={String(profile.completedProjects)} label="Projects" />
+              <Stat
+                value={String(profile.completedProjects)}
+                label="Projects"
+              />
             </div>
             <div className="mt-5 text-left">
               <Detail
                 label={agency ? "Team size" : "Availability"}
-                value={agency ? "8 specialists" : "20–30 hrs/week"}
+                value={agency ? "8 specialists" : profile.duration}
               />
               <div className="mt-4">
                 <Detail
@@ -105,11 +134,24 @@ export function PublicMarketplaceProfile({
                 />
               </div>
               <div className="mt-4">
-                <Detail label="Languages" value="English, Bengali" />
+                <p className="text-xs font-semibold tracking-wide text-[#858a82] uppercase">
+                  Languages
+                </p>
+                <div className="mt-3 grid gap-2 text-sm text-[#656b63]">
+                  {profile.languages?.length ? (
+                    profile.languages.map(({ language, proficiency }) => (
+                      <p key={language}>
+                        {language} – {proficiency}
+                      </p>
+                    ))
+                  ) : (
+                    <p>Not specified</p>
+                  )}
+                </div>
               </div>
             </div>
           </section>
-          {!agency && (
+          {!agency && profile.verified && (
             <section className="rounded-2xl border border-[#d2dfcf] bg-[#edf4ea] p-5">
               <div className="flex items-center gap-2 text-sm font-semibold text-[#476f44]">
                 <Icon icon="solar:verified-check-bold" width="20" />
@@ -133,14 +175,14 @@ export function PublicMarketplaceProfile({
                   <h2 className="mt-3 max-w-2xl text-3xl leading-tight font-semibold tracking-[-.04em]">
                     {agency
                       ? "A senior product team for ambitious digital products."
-                      : "I build dependable digital products from idea to production."}
+                      : profile.title}
                   </h2>
                 </div>
                 {!agency && (
                   <div className="shrink-0 sm:text-right">
                     <p className="text-xs text-[#7c8179]">Hourly rate</p>
                     <p className="mt-1 text-xl font-semibold">
-                      $85
+                      ${profile.bid}
                       <span className="text-sm text-[#7c8179]">/hr</span>
                     </p>
                   </div>
@@ -149,7 +191,7 @@ export function PublicMarketplaceProfile({
               <p className="mt-6 max-w-3xl text-sm leading-7 text-[#626860]">
                 {agency
                   ? "We partner with product teams to design and build dependable web applications—from strategy and prototypes through scalable engineering and launch. Clients work with one accountable agency backed by focused specialists."
-                  : "I help product teams turn complex ideas into fast, dependable web applications. My work spans product architecture, polished React interfaces, scalable APIs, and production infrastructure."}
+                  : profile.coverLetter}
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
                 {profile.skills.map((skill) => (
@@ -167,42 +209,63 @@ export function PublicMarketplaceProfile({
           <ProfileSection
             eyebrow="Selected work"
             title={agency ? "Agency portfolio" : "Portfolio"}
-            detail="2 featured projects"
+            detail={`${portfolio.length} featured projects`}
           >
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid max-w-lg gap-4">
               {portfolio.map((project) => (
                 <article
                   key={project.title}
-                  className="overflow-hidden rounded-xl border border-black/7"
+                  className="overflow-hidden rounded-xl border border-black/10 bg-white"
                 >
                   <div
-                    className={`flex aspect-[1.8] items-center justify-center bg-linear-to-br ${project.tone}`}
+                    className={`relative flex h-44 items-center justify-center bg-linear-to-br ${project.tone}`}
                   >
-                    <Icon
-                      icon={project.icon}
-                      width="38"
-                      className="text-[#46645a]"
-                    />
+                    {project.imageUrl ? (
+                      <Image
+                        src={project.imageUrl}
+                        alt={project.title}
+                        fill
+                        sizes="(max-width: 1024px) 100vw, 900px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <Icon
+                        icon={project.icon}
+                        width="38"
+                        className="text-[#46645a]"
+                      />
+                    )}
                   </div>
-                  <div className="p-4">
-                    <p className="text-[10px] text-[#758076]">
+                  <div className="p-4 sm:p-5">
+                    <p className="text-xs font-semibold tracking-[.14em] text-[#62805f] uppercase">
                       {project.category}
                     </p>
-                    <h3 className="mt-2 text-sm font-semibold">
+                    <h3 className="mt-3 text-xl font-semibold tracking-[-.03em]">
                       {project.title}
                     </h3>
-                    <p className="mt-3 text-xs text-[#52784f]">
+                    <p className="mt-3 line-clamp-3 text-sm leading-6 text-[#777d75]">
                       {project.result}
                     </p>
+                    {project.liveUrl && (
+                      <div className="mt-5 border-t border-black/8 pt-4">
+                        <a
+                          href={project.liveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 text-sm font-semibold text-[#52784f]"
+                        >
+                          View live project
+                          <Icon icon="solar:arrow-right-up-linear" width="18" />
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </article>
               ))}
             </div>
           </ProfileSection>
 
-          {agency && (
-            <AgencyMembersPagination />
-          )}
+          {agency && <AgencyMembersPagination />}
 
           <WorkHistoryPagination averageRating={profile.rating} />
         </div>

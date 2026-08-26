@@ -4,12 +4,15 @@ import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { sidebarNavigation } from "./navigation";
+import Image from "next/image";
 import { getToken, useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
-import Image from "next/image";
+import { useState } from "react";
+import { emptyJobFilters, JobFilters } from "../jobs/job-filter-popover";
 
 export function WorkspaceSidebar() {
   const { user, isLoaded } = useUser();
+  const [filters, setFilters] = useState<JobFilters>(emptyJobFilters);
 
   const { data: profileMetaData, isLoading: profileMetaDataLoading } = useQuery(
     {
@@ -86,9 +89,8 @@ export function WorkspaceSidebar() {
       `Add ${3 - portfolios.length} more portfolio projects.`,
   ].filter(Boolean) as string[];
 
-  const pathname = usePathname();
-
   const profileLoading = !isLoaded || profileMetaDataLoading;
+  const pathname = usePathname();
 
   return (
     <aside className="grid gap-5 xl:sticky xl:top-24">
@@ -147,7 +149,7 @@ export function WorkspaceSidebar() {
                   <strong className="mb-1 block font-semibold">
                     Reach 100%
                   </strong>
-                  {strengthSuggestions.map((suggestion) => (
+                  {strengthSuggestions.map((suggestion: any) => (
                     <span key={suggestion} className="block text-white/75">
                       • {suggestion}
                     </span>

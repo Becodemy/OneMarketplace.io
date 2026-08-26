@@ -3,7 +3,6 @@
 import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { dashboardNotifications } from "../notifications/notifications-data";
 import {
   presentNotification,
   useNotifications,

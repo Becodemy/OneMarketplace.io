@@ -8,6 +8,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -242,3 +243,70 @@ export const notifications = pgTable("notifications", {
   read_at: timestamp("read_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
+
+export const proposals = pgTable(
+  "proposals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    job_id: uuid("job_id")
+      .notNull()
+      .references(() => job_posts.id, { onDelete: "cascade" }),
+    sender_id: text("sender_id").notNull(),
+    sender_type: text("sender_type").notNull(),
+    cover_letter: text("cover_letter").notNull(),
+    bid_amount: numeric("bid_amount", { precision: 9, scale: 2 }).notNull(),
+    duration: text("duration").notNull(),
+    screening_answers: jsonb("screening_answers")
+      .$type<Array<{ question: string; answer: string }>>()
+      .notNull()
+      .default([]),
+    status: text("status").notNull().default("SUBMITTED"),
+    is_shortlisted: boolean("is_shortlisted").notNull().default(false),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("proposal_sender_job_unique").on(table.sender_id, table.job_id),
+  ],
+);
+
+export const proposalRelations = relations(proposals, ({ one }) => ({
+  job: one(job_posts, {
+    fields: [proposals.job_id],
+    references: [job_posts.id],
+  }),
+}));
+
+export const freelancer_saved_job_posts = pgTable(
+  "freelancer_saved_job_posts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    job_id: uuid("job_id")
+      .notNull()
+      .references(() => job_posts.id, { onDelete: "cascade" }),
+    freelancer_id: text("freelancer_id")
+      .notNull()
+      .references(() => freelancer_metadata.auth_id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("freelancer_saved_job_posts_freelancer_job_unique").on(
+      table.freelancer_id,
+      table.job_id,
+    ),
+  ],
+);
+
+export const freelancerSavedJobPostRelations = relations(
+  freelancer_saved_job_posts,
+  ({ one }) => ({
+    job: one(job_posts, {
+      fields: [freelancer_saved_job_posts.job_id],
+      references: [job_posts.id],
+    }),
+    freelancer: one(freelancer_metadata, {
+      fields: [freelancer_saved_job_posts.freelancer_id],
+      references: [freelancer_metadata.auth_id],
+    }),
+  }),
+);

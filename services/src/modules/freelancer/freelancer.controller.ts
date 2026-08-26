@@ -5,7 +5,10 @@ import { ApiResponse } from "../../types/common.types.js";
 import { FreelancerProfileData, SaveFreelancerProfileInput } from "./@types.js";
 import { requireText } from "../../config/constants.js";
 import {
+  getFreelancerJobPost,
   getFreelancerProfile,
+  getMatchedJobPosts,
+  getPublicFreelancerProfile,
   saveFreelancerProfile,
 } from "./freelancer.service.js";
 
@@ -151,7 +154,10 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(
       }),
     };
 
-    const profile = await saveFreelancerProfile(input,request.auth?.isOnboarded);
+    const profile = await saveFreelancerProfile(
+      input,
+      request.auth?.isOnboarded,
+    );
     await request.logger.info({
       message: "Freelancer profile saved",
       importance: "high",
@@ -178,5 +184,71 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(
     };
 
     response.status(200).json(body);
+  },
+);
+
+export const getFreelancerJobFeed: RequestHandler = asyncHandler(
+  async (request, response) => {
+    const auth = requireFreelancer(request);
+    const list = (value: unknown) =>
+      typeof value === "string" ? value.split(",").filter(Boolean) : undefined;
+    const number = (value: unknown) => {
+      const parsed = Number(value);
+      return value !== undefined && Number.isFinite(parsed)
+        ? parsed
+        : undefined;
+    };
+
+    const filters = {
+      sort: request.query.filter === "recent" ? "recent" : "best-match",
+      levels: list(request.query.levels),
+      durations: list(request.query.durations),
+      minBudget: number(request.query.minBudget),
+      maxBudget: number(request.query.maxBudget),
+      minProposals: number(request.query.minProposals),
+      maxProposals: number(request.query.maxProposals),
+      paymentVerified: request.query.paymentVerified === "true",
+    } as const;
+
+    const jobs = await getMatchedJobPosts(auth.userId, filters);
+
+    response.status(200).json({
+      success: true,
+      message:
+        filters.sort === "recent"
+          ? "Recent job posts retrieved."
+          : "Matched job posts retrieved.",
+      data: jobs,
+    });
+  },
+);
+
+export const getFreelancerJobDetails: RequestHandler = asyncHandler(
+  async (request, response) => {
+    requireFreelancer(request);
+    const job = await getFreelancerJobPost(
+      requireText(request.params.id, "Job ID"),
+    );
+
+    response.status(200).json({
+      success: true,
+      message: "Job post retrieved.",
+      data: job,
+    });
+  },
+);
+
+export const getPublicFreelancer: RequestHandler = asyncHandler(
+  async (request, response) => {
+    const profile = await getPublicFreelancerProfile(
+      requireText(request.params.id, "Freelancer"),
+    );
+    if (!profile) throw new ApiError(404, "Freelancer profile not found.");
+
+    response.status(200).json({
+      success: true,
+      message: "Freelancer profile retrieved.",
+      data: profile,
+    });
   },
 );

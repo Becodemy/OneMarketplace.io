@@ -2,7 +2,7 @@
 
 import { Icon } from "@iconify/react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardHeader } from "./_components/dashboard/dashboard-header";
 import { WorkspaceSidebar } from "./_components/dashboard/workspace-sidebar";
 import { JobCard } from "./_components/jobs/job-card";
@@ -11,21 +11,145 @@ import {
   JobFilterPopover,
   type JobFilters,
 } from "./_components/jobs/job-filter-popover";
-import { dashboardJobs } from "./_components/jobs/jobs-data";
 import { ProposalModal } from "./_components/jobs/proposal-modal";
 import type { Job } from "./_components/jobs/types";
 import { redirect } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, useUser } from "@clerk/nextjs";
+import { format } from "timeago.js";
+import { useProposalMetadata } from "./_components/proposals/use-proposal-metadata";
+
+type ApiJob = {
+  id: string;
+  title: string;
+  description: string;
+  expertise_level: string;
+  expected_duration: string;
+  skills: string[];
+  total_budget: string;
+  published_at: string | null;
+  created_at: string | null;
+  companyName: string;
+  clientCountry?: string | null;
+  paymentVerified: boolean;
+  proposalCount?: number;
+  matchScore?: number;
+  savedAt?: string | null;
+};
+
+export const proposalRange = (range: string) => {
+  if (range === "Less than 5") return { maxProposals: "4" };
+  if (range === "5 to 10") return { minProposals: "5", maxProposals: "10" };
+  if (range === "10 to 15") return { minProposals: "10", maxProposals: "15" };
+  return {};
+};
+
+const JobCardsSkeleton = () => (
+  <div className="grid gap-4" aria-label="Loading job posts" aria-busy="true">
+    {[0, 2].map((item) => (
+      <div
+        key={item}
+        className="animate-pulse rounded-2xl border border-black/8 bg-white p-7"
+      >
+        <div className="h-3 w-32 rounded-full bg-[#e5e8e2]" />
+        <div className="mt-4 h-6 w-3/4 rounded-full bg-[#dfe4dc]" />
+        <div className="mt-5 h-3 w-2/5 rounded-full bg-[#e9ece6]" />
+        <div className="mt-6 h-3 w-full rounded-full bg-[#e5e8e2]" />
+        <div className="mt-2 h-3 w-4/5 rounded-full bg-[#e9ece6]" />
+        <div className="mt-6 flex gap-2">
+          {[20, 24, 16].map((width) => (
+            <div
+              key={width}
+              className="h-7 rounded-lg bg-[#e5e8e2]"
+              style={{ width: `${width}%` }}
+            />
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 export function FreelancerDashboard() {
   const [search, setSearch] = useState("");
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const { getToken } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("Best matches");
-  const [saved, setSaved] = useState<number[]>([]);
   const [proposalJob, setProposalJob] = useState<Job | null>(null);
   const [filters, setFilters] = useState<JobFilters>(emptyJobFilters);
+  const [saveCooldowns, setSaveCooldowns] = useState<Record<string, number>>(
+    {},
+  );
+  const [optimisticSavedJobs, setOptimisticSavedJobs] = useState<
+    Record<string, boolean>
+  >({});
+  const [cooldownNow, setCooldownNow] = useState(Date.now());
+  const [savingJobIds, setSavingJobIds] = useState<string[]>([]);
+
+  const { data: profileMetaData, isLoading: profileMetaDataLoading } = useQuery(
+    {
+      queryKey: ["profile-metadata"],
+      enabled: Boolean(user),
+      queryFn: async () => {
+        const token = await getToken();
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_SERVER_URI}/freelancer/profile?role=freelancer`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+          },
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result.message || "The client profile could not be loaded.",
+          );
+        }
+
+        return result.data;
+      },
+    },
+  );
+
+  const personalFields = [
+    user?.firstName,
+    user?.lastName,
+    profileMetaData?.country,
+    profileMetaData?.city,
+  ];
+
+  const professionalFields = [
+    profileMetaData?.professional_title,
+    profileMetaData?.professional_description,
+    profileMetaData?.hourly_rate,
+    profileMetaData?.availability_status,
+    profileMetaData?.weekly_availability,
+    profileMetaData?.experience_level,
+  ];
+
+  const skills = profileMetaData?.skills ?? [];
+  const portfolios = profileMetaData?.portfolios ?? [];
+  const completedLanguages =
+    profileMetaData?.languages?.filter(
+      (item: { language: string }) => item.language,
+    ).length ?? 0;
+
+  const strengthSuggestions = [
+    !user?.hasImage && "Add a real profile photo.",
+    personalFields.some((field) => !field) && "Complete your personal details.",
+    professionalFields.some((field) => !field) &&
+      "Complete every professional field.",
+    skills.length < 10 && `Add ${10 - skills.length} more skills.`,
+    completedLanguages < 3 && `Add ${3 - completedLanguages} more languages.`,
+    portfolios.length < 3 &&
+      `Add ${3 - portfolios.length} more portfolio projects.`,
+  ].filter(Boolean) as string[];
 
   const activeFilterCount =
     filters.experienceLevels.length +
@@ -34,7 +158,7 @@ export function FreelancerDashboard() {
     Number(filters.proposalRange !== "Any number") +
     Number(filters.verifiedOnly);
 
-  const { data: connectsMetadata, isLoading: connectsLoading } = useQuery({
+  const { data: connectsMetadata } = useQuery({
     queryKey: ["connects"],
     enabled: Boolean(user),
     queryFn: async () => {
@@ -62,9 +186,140 @@ export function FreelancerDashboard() {
     },
   });
 
+  const { data: savedJobs = [], isLoading: savedJobsLoading } = useQuery<
+    ApiJob[]
+  >({
+    queryKey: ["saved-jobs"],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/jobs/saved?role=freelancer`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "Saved jobs could not be loaded.");
+      }
+      return result.data;
+    },
+  });
+
+  const savedJobIds = useMemo(
+    () => new Set(savedJobs.map((job) => job.id)),
+    [savedJobs],
+  );
+
+  useEffect(() => {
+    const now = Date.now();
+    setSaveCooldowns((current) => {
+      const next = { ...current };
+      savedJobs.forEach((job) => {
+        const savedAt = new Date(job.savedAt ?? 0).getTime();
+        if (savedAt + 5_000 > now) {
+          next[job.id] = Math.max(next[job.id] ?? 0, savedAt + 5_000);
+        }
+      });
+      return next;
+    });
+  }, [savedJobs]);
+
+  useEffect(() => {
+    if (
+      !Object.values(saveCooldowns).some((deadline) => deadline > cooldownNow)
+    )
+      return;
+    const interval = window.setInterval(() => setCooldownNow(Date.now()), 500);
+    return () => window.clearInterval(interval);
+  }, [cooldownNow, saveCooldowns]);
+
+  const query = useMemo(() => {
+    const params = new URLSearchParams({
+      role: "freelancer",
+      filter: activeTab === "Most recent" ? "recent" : "best-match",
+    });
+    if (filters.experienceLevels.length)
+      params.set("levels", filters.experienceLevels.join(","));
+    if (filters.durations.length)
+      params.set("durations", filters.durations.join(","));
+    if (filters.minBudget) params.set("minBudget", filters.minBudget);
+    if (filters.maxBudget) params.set("maxBudget", filters.maxBudget);
+    if (filters.verifiedOnly) params.set("paymentVerified", "true");
+    Object.entries(proposalRange(filters.proposalRange)).forEach(
+      ([key, value]) => params.set(key, value),
+    );
+    return params.toString();
+  }, [activeTab, filters]);
+
+  const {
+    data: jobs = [],
+    isLoading: jobsLoading,
+    isError: jobsError,
+  } = useQuery({
+    queryKey: ["freelancer-jobs", query],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const token = await getToken();
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/freelancer/jobs?${query}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || "The client profile could not be loaded.",
+        );
+      }
+
+      return result.data;
+    },
+  });
+  const mappedJobs = useMemo<Job[]>(
+    () =>
+      (activeTab === "Saved jobs" ? savedJobs : jobs).map((job: any) => ({
+        id: job.id,
+        title: job.title,
+        company: job.companyName,
+        verified: job.paymentVerified,
+        posted: format(job.published_at ?? job.created_at ?? new Date()),
+        type: "Fixed price",
+        budget: `$${Number(job.total_budget).toLocaleString()}`,
+        level: job.expertise_level,
+        duration: job.expected_duration,
+        description: job.description,
+        skills: job.skills,
+        screeningQuestions: job.screening_questions ?? [],
+        proposals: String(job.proposalCount),
+        featured: (job.matchScore ?? 0) >= 4,
+      })),
+    [activeTab, jobs, savedJobs],
+  );
+
+  const { data: proposalMetadata, isLoading: proposalMetadataLoading } =
+    useProposalMetadata();
+
+  const appliedJobIds = useMemo(
+    () =>
+      new Set(
+        proposalMetadata?.proposals?.map((proposal) => proposal.jobId) ?? [],
+      ),
+    [proposalMetadata],
+  );
+
   const visibleJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return dashboardJobs.filter((job) => {
+    return mappedJobs.filter((job) => {
       const searchable = [
         job.title,
         job.company,
@@ -74,33 +329,68 @@ export function FreelancerDashboard() {
         .join(" ")
         .toLowerCase();
       if (query && !searchable.includes(query)) return false;
-      if (activeTab === "Saved jobs") return saved.includes(job.id);
       if (
-        filters.experienceLevels.length &&
-        !filters.experienceLevels.includes(job.level)
-      )
+        activeTab === "Saved jobs" &&
+        !(optimisticSavedJobs[job.id] ?? savedJobIds.has(job.id))
+      ) {
         return false;
-      if (filters.durations.length && !filters.durations.includes(job.duration))
-        return false;
-      const budget = Number(job.budget.replace(/[^0-9.]/g, ""));
-      if (filters.minBudget && budget < Number(filters.minBudget)) return false;
-      if (filters.maxBudget && budget > Number(filters.maxBudget)) return false;
-      if (
-        filters.proposalRange !== "Any number" &&
-        job.proposals !== filters.proposalRange
-      )
-        return false;
-      if (filters.verifiedOnly && !job.verified) return false;
+      }
       return true;
     });
-  }, [activeTab, filters, saved, search]);
+  }, [mappedJobs, mappedJobs, optimisticSavedJobs, savedJobIds, search]);
 
-  const toggleSaved = (id: number) =>
-    setSaved((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
-    );
+  const toggleSaved = async (id: string) => {
+    if ((saveCooldowns[id] ?? 0) > Date.now() || savingJobIds.includes(id))
+      return;
+    const isSaved = optimisticSavedJobs[id] ?? savedJobIds.has(id);
+    const optimisticsState = !isSaved;
+    const cooldownDeadline = Date.now() + 5_000;
+    setOptimisticSavedJobs((current) => ({
+      ...current,
+      [id]: optimisticsState,
+    }));
+    setSaveCooldowns((current) => ({
+      ...current,
+      [id]: cooldownDeadline,
+    }));
+    setCooldownNow(Date.now());
+    setSavingJobIds((current) => [...current, id]);
+
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/jobs/saved/${id}?role=freelancer`,
+        {
+          method: isSaved ? "DELETE" : "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 429) {
+          setOptimisticSavedJobs((current) => {
+            const next = { ...current };
+            delete next[id];
+            return next;
+          });
+          return;
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ["saved-jobs"] });
+      setOptimisticSavedJobs((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+    } catch {
+      setOptimisticSavedJobs((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+    } finally {
+      setSavingJobIds((current) => current.filter((jobId) => jobId !== id));
+    }
+  };
 
   return (
     <div className="min-h-svh bg-[#f4f6f2] font-(family-name:--font-dm-sans) text-[#242724]">
@@ -113,7 +403,7 @@ export function FreelancerDashboard() {
               Saturday, July 25
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">
-              Good morning, Shahriar.
+              Good morning, {user?.firstName}.
             </h1>
             <p className="mt-2 text-sm text-[#72776f]">
               Here are fresh opportunities matched to your profile.
@@ -176,33 +466,53 @@ export function FreelancerDashboard() {
             </div>
 
             <div className="mt-4 grid gap-4">
-              {visibleJobs.map((job) => (
-                <JobCard
-                  key={job.id}
-                  job={job}
-                  saved={saved.includes(job.id)}
-                  onSave={() => toggleSaved(job.id)}
-                  onPropose={() => setProposalJob(job)}
-                />
-              ))}
-              {!visibleJobs.length && (
-                <div className="rounded-2xl border border-dashed border-black/12 bg-white px-6 py-16 text-center">
-                  <Icon
-                    icon="solar:case-minimalistic-linear"
-                    width="34"
-                    className="mx-auto text-[#7c8179]"
-                  />
-                  <h2 className="mt-4 text-lg font-semibold">
-                    No jobs here yet
-                  </h2>
-                  <p className="mt-2 text-sm text-[#777c74]">
-                    {activeTab === "Saved jobs"
-                      ? "Save a job and it will appear here."
-                      : activeFilterCount
-                        ? "Try adjusting or clearing your job filters."
-                        : "Try a broader search term."}
-                  </p>
-                </div>
+              {(activeTab === "Saved jobs" ? savedJobsLoading : jobsLoading) ? (
+                <JobCardsSkeleton />
+              ) : (
+                <>
+                  {visibleJobs.map((job) => (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      saved={
+                        optimisticSavedJobs[job.id] ?? savedJobIds.has(job.id)
+                      }
+                      onSave={() => void toggleSaved(job.id)}
+                      saveDisabled={
+                        savingJobIds.includes(job.id) ||
+                        (saveCooldowns[job.id] ?? 0) > cooldownNow
+                      }
+                      saveCooldownSeconds={Math.max(
+                        0,
+                        Math.ceil(
+                          ((saveCooldowns[job.id] ?? 0) - cooldownNow) / 500,
+                        ),
+                      )}
+                      onPropose={() => setProposalJob(job)}
+                      hasApplied={appliedJobIds.has(job.id)}
+                      proposalMetadataLoading={proposalMetadataLoading}
+                    />
+                  ))}
+                  {!visibleJobs.length && (
+                    <div className="rounded-2xl border border-dashed border-black/12 bg-white px-6 py-16 text-center">
+                      <Icon
+                        icon="solar:case-minimalistic-linear"
+                        width="34"
+                        className="mx-auto text-[#7c8179]"
+                      />
+                      <h2 className="mt-4 text-lg font-semibold">
+                        No jobs here yet
+                      </h2>
+                      <p className="mt-2 text-sm text-[#777c74]">
+                        {activeTab === "Saved jobs"
+                          ? "Save a job and it will appear here."
+                          : activeFilterCount
+                            ? "Try adjusting or clearing your job filters."
+                            : "Try a broader search term."}
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </section>
@@ -220,9 +530,12 @@ export function FreelancerDashboard() {
               </div>
               <div className="mt-5 grid grid-cols-3 gap-2 text-center">
                 {[
-                  ["7", "Active"],
-                  ["3", "Viewed"],
-                  ["2", "Interviews"],
+                  [String(proposalMetadata?.counts?.active ?? "..."), "Active"],
+                  [String(proposalMetadata?.counts?.viewed ?? "..."), "Viewed"],
+                  [
+                    String(proposalMetadata?.counts?.interviewed ?? "..."),
+                    "Interviews",
+                  ],
                 ].map(([value, label], index) => (
                   <div
                     key={label}
@@ -293,8 +606,9 @@ export function FreelancerDashboard() {
               </span>
               <h2 className="mt-4 font-semibold">Stand out to clients</h2>
               <p className="mt-2 text-xs leading-5 text-[#667064]">
-                Add two recent projects to your portfolio to improve your match
-                quality.
+                {profileMetaDataLoading || !isLoaded
+                  ? "..."
+                  : strengthSuggestions}
               </p>
               <Link
                 href="/my-profile"

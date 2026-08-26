@@ -10,7 +10,7 @@ export const getAccountAuthCacheKey = (
 ): string => `account:auth:${userId}:${role}`;
 
 export const requireText = (
-  value: string | undefined,
+  value: string | undefined | string[],
   fieldName: string,
 ): string => {
   if (typeof value !== "string" || !value.trim()) {

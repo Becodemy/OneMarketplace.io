@@ -1,5 +1,5 @@
 export type Job = {
-  id: number;
+  id: string;
   title: string;
   company: string;
   verified: boolean;
@@ -11,8 +11,9 @@ export type Job = {
   description: string;
   skills: string[];
   proposals: string;
-  clientRating: number;
-  clientSpent: string;
-  location: string;
+  clientRating?: number;
+  clientSpent?: string;
+  screeningQuestions?: string[];
+  location?: string;
   featured?: boolean;
 };

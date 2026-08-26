@@ -1,9 +1,12 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { db } from "../../database/client.js";
 import {
   accounts,
+  client_metadata,
   freelancer_metadata,
   freelancer_portfolios,
+  job_posts,
+  proposals,
 } from "../../database/schema.js";
 import {
   FreelancerProfileData,
@@ -21,6 +24,20 @@ import {
   getAccountAuthCacheKey,
 } from "../../config/constants.js";
 import { addConnects } from "../connects/connects.service.js";
+import { createClerkClient } from "@clerk/backend";
+
+const getClientCountry = async (clientId: string) => {
+  if (!env.clerkSecretKey) {
+    throw new ApiError(503, "Authentication is not configured.");
+  }
+
+  const client = await createClerkClient({
+    secretKey: env.clerkSecretKey,
+  }).users.getUser(clientId);
+  const country = client.unsafeMetadata.country;
+
+  return typeof country === "string" ? country : null;
+};
 
 export const getFreelancerProfile = async (
   userId: string,
@@ -231,4 +248,175 @@ export const saveFreelancerProfile = async (
   );
 
   return profile;
+};
+
+export const getMatchedJobPosts = async (
+  userId: string,
+  filters: {
+    sort?: "best-match" | "recent";
+    levels?: string[];
+    durations?: string[];
+    minBudget?: number;
+    maxBudget?: number;
+    minProposals?: number;
+    maxProposals?: number;
+    paymentVerified?: boolean;
+  } = {},
+) => {
+  const [profile] = await db
+    .select({ skills: freelancer_metadata.skills })
+    .from(freelancer_metadata)
+    .where(eq(freelancer_metadata.auth_id, userId));
+
+  if (!profile) throw new ApiError(404, "Freelancer profile not found.");
+
+  const skills = profile.skills.map((skill) => skill.toLowerCase());
+
+  const jobs = await db
+    .select({
+      job: job_posts,
+      companyName: client_metadata.company_name,
+      paymentVerified: accounts.paymentMethodVerified,
+    })
+    .from(job_posts)
+    .innerJoin(accounts, eq(job_posts.client_id, accounts.auth_id))
+    .innerJoin(
+      client_metadata,
+      eq(job_posts.client_id, client_metadata.auth_id),
+    )
+    .where(eq(job_posts.status, "PUBLISHED"))
+    .orderBy(desc(job_posts.published_at));
+
+  const proposalCounts = await db
+    .select({ jobId: proposals.job_id, count: count(proposals.id) })
+    .from(proposals)
+    .groupBy(proposals.job_id);
+
+  const clientCountries = new Map(
+    await Promise.all(
+      [...new Set(jobs.map(({ job }) => job.client_id))].map(
+        async (clientId) =>
+          [clientId, await getClientCountry(clientId)] as const,
+      ),
+    ),
+  );
+
+  const counts = new Map(
+    proposalCounts?.map((item) => [item.jobId, Number(item.count)]),
+  );
+
+  const filteredJobs = jobs
+    .map(({ job, companyName, paymentVerified }) => ({
+      ...job,
+      companyName,
+      clientCountry: clientCountries.get(job.client_id) ?? null,
+      paymentVerified: paymentVerified === true,
+      proposalCount: counts?.get(job.id) ?? 0,
+    }))
+    .filter((job) => {
+      const budget = Number(job.total_budget);
+      return (
+        (!filters.levels?.length ||
+          filters.levels.includes(job.expertise_level)) &&
+        (!filters.durations?.length ||
+          filters.durations.includes(job.expected_duration)) &&
+        (filters.minBudget === undefined || budget >= filters.minBudget) &&
+        (filters.maxBudget === undefined || budget <= filters.maxBudget) &&
+        (filters.minProposals === undefined ||
+          job.proposalCount >= filters.minProposals) &&
+        (filters.maxProposals === undefined ||
+          job.proposalCount <= filters.maxProposals) &&
+        (!filters.paymentVerified || job.paymentVerified)
+      );
+    });
+
+  if (filters.sort === "recent") return filteredJobs;
+
+  return filteredJobs
+    .map((job) => {
+      const jobSkills = job.skills.map((skill) => skill.toLowerCase());
+      const content = `${job.title} ${job.description}`.toLowerCase();
+      const skillMatches = skills.filter((skill) =>
+        jobSkills.some(
+          (jobSkill) => jobSkill === skill || jobSkill.includes(skill),
+        ),
+      ).length;
+      const contentMatches = skills.filter((skill) =>
+        content.includes(skill),
+      ).length;
+
+      return { ...job, matchScore: skillMatches * 2 + contentMatches };
+    })
+    .filter((job) => job.matchScore > 0)
+    .sort(
+      (first, second) =>
+        second.matchScore - first.matchScore ||
+        new Date(second.published_at ?? second.created_at ?? 0).getTime() -
+          new Date(first.published_at ?? first?.created_at ?? 0).getTime(),
+    );
+};
+
+export const getFreelancerJobPost = async (jobId: string) => {
+  const [result] = await db
+    .select({
+      job: job_posts,
+      companyName: client_metadata.company_name,
+      companyDescription: client_metadata.company_description,
+      paymentVerified: accounts.paymentMethodVerified,
+      clientJoinedAt: accounts.created_at,
+    })
+    .from(job_posts)
+    .innerJoin(accounts, eq(job_posts.client_id, accounts.auth_id))
+    .innerJoin(
+      client_metadata,
+      eq(job_posts.client_id, client_metadata.auth_id),
+    )
+    .where(and(eq(job_posts.id, jobId), eq(job_posts.status, "PUBLISHED")))
+    .limit(1);
+
+  if (!result) throw new ApiError(404, "Job post not found.");
+
+  const [proposalTotal] = await db
+    .select({ count: count(proposals.id) })
+    .from(proposals)
+    .where(eq(proposals.job_id, jobId));
+
+  const clientCountry = await getClientCountry(result.job.client_id);
+
+  return {
+    ...result.job,
+    companyName: result.companyName,
+    companyDescription: result.companyDescription,
+    clientCountry,
+    paymentVerified: result.paymentVerified === true,
+    clientJoinedAt: result.clientJoinedAt,
+    proposalCount: Number(proposalTotal?.count ?? 0),
+  };
+};
+
+export const getPublicFreelancerProfile = async (profileId: string) => {
+  const [freelancer] = await db
+    .select({ userId: freelancer_metadata.auth_id })
+    .from(freelancer_metadata)
+    .where(eq(freelancer_metadata.id, profileId))
+    .limit(1);
+  if (!freelancer) return null;
+
+  const profile = await getFreelancerProfile(freelancer.userId);
+  if (!profile) return null;
+
+  const user = await createClerkClient({
+    secretKey: env.clerkSecretKey,
+  }).users.getUser(freelancer.userId);
+  const { auth_id: _authId, ...publicProfile } =
+    profile as FreelancerProfileData & {
+      auth_id?: string;
+    };
+
+  return {
+    ...publicProfile,
+    id: profileId,
+    name: user.fullName ?? "Freelancer",
+    avatarUrl: user.imageUrl || null,
+  };
 };
