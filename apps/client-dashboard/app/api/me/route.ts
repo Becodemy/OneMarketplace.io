@@ -13,7 +13,7 @@ interface BackendAuthStatusResponse {
 export async function GET() {
   const { getToken } = await auth();
   const token = await getToken();
-  
+
   if (!token) {
     return Response.json(
       {
@@ -69,6 +69,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Backend authentication status request failed.", error);
+
     return Response.json(
       {
         success: false,

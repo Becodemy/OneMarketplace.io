@@ -1,41 +1,238 @@
 "use client";
 
 import { Icon } from "@iconify/react";
+import { useAuth } from "@clerk/nextjs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
+import { playIncomingMessageSound } from "../../hooks/message-sound";
 import {
-  clientConversations,
-  clientJobs,
-  clientProposals,
   type ClientConversation,
   type ClientMessage,
-  type ClientProposal,
 } from "../data/client-data";
 
+type ApiConversation = {
+  id: string;
+  jobId: string | null;
+  unreadCount: number;
+  jobTitle: string | null;
+  lastMessageAt: string | null;
+  lastAttachmentName: string | null;
+  lastMessage: { body: string | null; eventType: string | null } | null;
+  participants: Array<{
+    accountId: string;
+    participantType: string;
+    name: string;
+    avatarUrl: string | null;
+  }>;
+};
+
+type ApiMessage = {
+  id: string;
+  senderId: string | null;
+  body: string | null;
+  createdAt: string;
+  replyToMessageId: string | null;
+  attachments: Array<{
+    file_name: string;
+    file_url: string;
+    file_size: number;
+    mime_type: string;
+  }>;
+};
+
+const readFile = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("File could not be read."));
+    reader.readAsDataURL(file);
+  });
+
 export function MessagesDashboard({
-  initialPerson,
-  initialAction,
+  conversationId,
 }: {
-  initialPerson?: string;
-  initialAction?: string;
+  conversationId?: string;
 }) {
-  const seededConversations = useMemo(
-    () => seedTransactionConversation(initialPerson, initialAction),
-    [initialAction, initialPerson],
-  );
-  const [conversations, setConversations] = useState(seededConversations);
-  const [selectedId, setSelectedId] = useState<number | null>(
-    seededConversations.find(
-      (conversation) => conversation.person === initialPerson,
-    )?.id ?? null,
-  );
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { getToken, userId } = useAuth();
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [typingUser, setTypingUser] = useState<{
+    conversationId: string;
+    userId: string;
+  } | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const markedReadRef = useRef<string | null>(null);
 
-  const selected = conversations.find((item) => item.id === selectedId);
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    void getToken().then((token) => {
+      if (!active || !token) return;
+      const socket = io(new URL(process.env.NEXT_PUBLIC_SERVER_URI!).origin, {
+        auth: { token, role: "client" },
+      });
+      socketRef.current = socket;
+      socket.on("presence:snapshot", ({ userIds }: { userIds: string[] }) =>
+        setOnlineUsers(new Set(userIds)),
+      );
+      socket.on(
+        "presence:update",
+        ({ userId: changedUserId, online }: { userId: string; online: boolean }) =>
+          setOnlineUsers((current) => {
+            const next = new Set(current);
+            online ? next.add(changedUserId) : next.delete(changedUserId);
+            return next;
+          }),
+      );
+      socket.on(
+        "conversation:update",
+        ({ conversationId: changedConversationId, messagesChanged }: {
+          conversationId: string;
+          messagesChanged?: boolean;
+        }) => {
+          playIncomingMessageSound();
+          void queryClient.invalidateQueries({ queryKey: ["client-conversations"] });
+          if (messagesChanged !== false)
+            void queryClient.invalidateQueries({
+              queryKey: ["conversation-messages", changedConversationId],
+            });
+        },
+      );
+      socket.on(
+        "typing:update",
+        ({ conversationId, userId, isTyping }: {
+          conversationId: string;
+          userId: string;
+          isTyping: boolean;
+        }) =>
+          setTypingUser(isTyping ? { conversationId, userId } : null),
+      );
+    });
+    return () => {
+      active = false;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [getToken, queryClient, userId]);
+
+  const { data: inbox, isLoading: inboxLoading } = useQuery<{
+    conversations: ApiConversation[];
+    totalUnread: number;
+  }>({
+    queryKey: ["client-conversations"],
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/conversations?role=client`,
+        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      return result.data;
+    },
+  });
+
+  const selectedConversation = inbox?.conversations.find(
+    ({ id }) => id === conversationId,
+  );
+  const { data: messageData } = useQuery<{ messages: ApiMessage[] }>({
+    queryKey: ["conversation-messages", conversationId],
+    enabled: Boolean(selectedConversation),
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/conversations/${conversationId}/messages?role=client`,
+        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      return result.data;
+    },
+  });
+
+  const conversations: ClientConversation[] = useMemo(
+    () =>
+      (inbox?.conversations ?? []).map((conversation) => {
+        const person = conversation.participants.find(
+          ({ accountId }) => accountId !== userId,
+        );
+        return {
+          id: conversation.id,
+          person: person?.name ?? "Freelancer",
+          avatarUrl: person?.avatarUrl,
+          initials: (person?.name ?? "Freelancer")
+            .split(" ")
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2),
+          accountType:
+            person?.participantType === "AGENCY" ? "Agency" : "Freelancer",
+          context: conversation.jobTitle ?? "Direct conversation",
+          contextHref: conversation.jobId
+            ? `/proposals/${conversation.jobId}`
+            : "/proposals",
+          online: person ? onlineUsers.has(person.accountId) : false,
+          unread: conversation.unreadCount,
+          lastMessage:
+            conversation.lastMessage?.body ??
+            conversation.lastMessage?.eventType ??
+            (conversation.lastAttachmentName
+              ? `Attachment – ${conversation.lastAttachmentName}`
+              : null) ??
+            "Conversation started",
+          time: conversation.lastMessageAt
+            ? formatDistanceToNow(new Date(conversation.lastMessageAt), {
+                addSuffix: true,
+              })
+            : "New",
+          messages: [],
+        };
+      }),
+    [inbox, onlineUsers, userId],
+  );
+
+  const selectedBase = conversations.find(({ id }) => id === conversationId);
+  const selectedMessages: ClientMessage[] = (messageData?.messages ?? []).map(
+    (message) => ({
+      id: message.id,
+      kind: "text",
+      sender: message.senderId === userId ? "client" : "talent",
+      text: message.body ?? "Shared an attachment.",
+      time: formatDistanceToNow(new Date(message.createdAt), {
+        addSuffix: true,
+      }),
+      replyToId: message.replyToMessageId ?? undefined,
+      attachment: message.attachments[0]
+        ? {
+            name: message.attachments[0].file_name,
+            size: `${(message.attachments[0].file_size / 1024 / 1024).toFixed(1)} MB`,
+            type: message.attachments[0].mime_type,
+            url: message.attachments[0].file_url,
+          }
+        : undefined,
+    }),
+  );
+  const selected = selectedBase
+    ? { ...selectedBase, messages: selectedMessages }
+    : undefined;
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversationId, selectedMessages.length]);
+
   const filtered = useMemo(
     () =>
       conversations.filter((item) =>
@@ -46,67 +243,168 @@ export function MessagesDashboard({
     [conversations, search],
   );
 
-  const selectConversation = (conversation: ClientConversation) => {
-    setSelectedId(conversation.id);
-    setConversations((current) =>
-      current.map((item) =>
-        item.id === conversation.id ? { ...item, unread: 0 } : item,
-      ),
+  useEffect(() => {
+    const lastMessage = messageData?.messages.findLast(
+      ({ id }) => !id.startsWith("optimistic-"),
     );
-  };
-
-  const appendMessage = (
-    conversationId: number,
-    message: ClientMessage,
-    preview: string,
-  ) => {
-    setConversations((current) =>
-      current.map((item) =>
-        item.id === conversationId
-          ? {
-              ...item,
-              lastMessage: preview,
-              time: "Now",
-              messages: [...item.messages, message],
-            }
-          : item,
-      ),
+    if (
+      !selectedConversation ||
+      !lastMessage ||
+      !selectedConversation.unreadCount
+    )
+      return;
+    const readKey = `${selectedConversation.id}:${lastMessage.id}`;
+    if (markedReadRef.current === readKey) return;
+    markedReadRef.current = readKey;
+    queryClient.setQueryData<{
+      conversations: ApiConversation[];
+      totalUnread: number;
+    }>(["client-conversations"], (current) =>
+      current
+        ? {
+            ...current,
+            totalUnread: Math.max(
+              0,
+              current.totalUnread - selectedConversation.unreadCount,
+            ),
+            conversations: current.conversations.map((conversation) =>
+              conversation.id === selectedConversation.id
+                ? { ...conversation, unreadCount: 0 }
+                : conversation,
+            ),
+          }
+        : current,
     );
-  };
+    void getToken().then((token) =>
+      fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/conversations/${selectedConversation.id}/read?role=client`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ lastReadMessageId: lastMessage.id }),
+        },
+      ).then((response) => {
+        if (!response.ok && markedReadRef.current === readKey)
+          markedReadRef.current = null;
+      }).catch(() => {
+        if (markedReadRef.current === readKey) markedReadRef.current = null;
+      }),
+    );
+  }, [getToken, messageData?.messages, queryClient, selectedConversation]);
 
-  const sendMessage = () => {
+  const selectConversation = (conversation: ClientConversation) =>
+    router.push(`/messages?conversationId=${conversation.id}`);
+
+  const sendMessage = async (file?: File) => {
     const text = draft.trim();
-    if (!text || selectedId === null) return;
-    appendMessage(
-      selectedId,
-      {
-        id: Date.now(),
-        kind: "text",
-        sender: "client",
-        text,
-        time: "Now",
-      },
-      text,
-    );
+    if ((!text && !file) || !selected || sending) return;
+    const optimisticId = `optimistic-${Date.now()}`;
+    setSending(true);
     setDraft("");
+    queryClient.setQueryData<{
+      conversations: ApiConversation[];
+      totalUnread: number;
+    }>(["client-conversations"], (current) =>
+      current
+        ? {
+            ...current,
+            conversations: current.conversations.map((conversation) =>
+              conversation.id === selected.id
+                ? {
+                    ...conversation,
+                    lastMessage: { body: text || null, eventType: null },
+                    lastAttachmentName: file?.name ?? null,
+                    lastMessageAt: new Date().toISOString(),
+                  }
+                : conversation,
+            ),
+          }
+        : current,
+    );
+    queryClient.setQueryData<{ messages: ApiMessage[] }>(
+      ["conversation-messages", selected.id],
+      (current) => ({
+        messages: [
+          ...(current?.messages ?? []),
+          {
+            id: optimisticId,
+            senderId: userId ?? null,
+            body: text || null,
+            createdAt: new Date().toISOString(),
+            replyToMessageId: null,
+            attachments: file
+              ? [{ file_name: file.name, file_url: "", file_size: file.size, mime_type: file.type }]
+              : [],
+          },
+        ],
+      }),
+    );
+
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_URI}/conversations/${selected.id}/messages?role=client`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            body: text || undefined,
+            attachments: file
+              ? [
+                  {
+                    fileUrl: await readFile(file),
+                    fileName: file.name,
+                    fileSize: file.size,
+                    mimeType: file.type,
+                  },
+                ]
+              : [],
+          }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      queryClient.setQueryData<{ messages: ApiMessage[] }>(
+        ["conversation-messages", selected.id],
+        (current) => ({
+          messages: (current?.messages ?? []).map((message) =>
+            message.id === optimisticId ? result.data : message,
+          ),
+        }),
+      );
+    } catch (error) {
+      queryClient.setQueryData<{ messages: ApiMessage[] }>(
+        ["conversation-messages", selected.id],
+        (current) => ({
+          messages: (current?.messages ?? []).filter(({ id }) => id !== optimisticId),
+        }),
+      );
+      setDraft(text);
+      setFileError(error instanceof Error ? error.message : "Message could not be sent.");
+      void queryClient.invalidateQueries({ queryKey: ["client-conversations"] });
+      setSending(false);
+      return;
+    }
+
+    setSending(false);
+    socketRef.current?.emit("typing:set", {
+      conversationId: selected.id,
+      isTyping: false,
+    });
+    setSelectedFile(null);
+    setAttachmentOpen(false);
   };
 
   const createMeeting = () => {
     if (!selected) return;
     const meetUrl = "https://meet.google.com/new";
-    appendMessage(
-      selected.id,
-      {
-        id: Date.now(),
-        kind: "meeting",
-        sender: "client",
-        title: `${selected.context} meeting`,
-        startsAt: "Meeting room ready",
-        meetUrl,
-        time: "Now",
-      },
-      "Meeting room created — join when ready.",
-    );
+    setDraft(`Meeting room: ${meetUrl}`);
     window.open(meetUrl, "_blank", "noopener,noreferrer");
   };
 
@@ -132,28 +430,7 @@ export function MessagesDashboard({
     setSelectedFile(file);
   };
 
-  const attachFile = () => {
-    if (!selectedFile || selectedId === null) return;
-    appendMessage(
-      selectedId,
-      {
-        id: Date.now(),
-        kind: "text",
-        sender: "client",
-        text: draft.trim() || "Shared an attachment.",
-        time: "Now",
-        attachment: {
-          name: selectedFile.name,
-          size: `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB`,
-          type: selectedFile.type,
-        },
-      },
-      `Attachment: ${selectedFile.name}`,
-    );
-    setDraft("");
-    setSelectedFile(null);
-    setAttachmentOpen(false);
-  };
+  const attachFile = () => selectedFile && void sendMessage(selectedFile);
 
   return (
     <>
@@ -198,13 +475,22 @@ export function MessagesDashboard({
                 type="button"
                 onClick={() => selectConversation(conversation)}
                 className={`flex w-full gap-3 border-b border-black/6 p-4 text-left ${
-                  selectedId === conversation.id
+                  conversationId === conversation.id
                     ? "bg-[#edf4ea]"
                     : "hover:bg-[#f8f9f6]"
                 }`}
               >
                 <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#527a73] text-xs font-semibold text-white">
-                  {conversation.initials}
+                  {conversation.avatarUrl ? (
+                    <Image
+                      src={conversation.avatarUrl}
+                      alt={conversation.person}
+                      fill
+                      className="rounded-full object-cover"
+                    />
+                  ) : (
+                    conversation.initials
+                  )}
                   {conversation.online && (
                     <span className="absolute right-0 bottom-0 h-3 w-3 rounded-full border-2 border-white bg-[#5ca568]" />
                   )}
@@ -244,13 +530,24 @@ export function MessagesDashboard({
           <section className="flex min-h-0 flex-col">
             <header className="flex shrink-0 items-center justify-between gap-4 border-b border-black/7 p-4 sm:p-5">
               <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#527a73] text-xs font-semibold text-white">
-                  {selected.initials}
+                <span className="relative flex h-10 w-10 items-center justify-center rounded-full bg-[#527a73] text-xs font-semibold text-white">
+                  {selected.avatarUrl ? (
+                    <Image
+                      src={selected.avatarUrl}
+                      alt={selected.person}
+                      fill
+                      className="rounded-full object-cover"
+                    />
+                  ) : (
+                    selected.initials
+                  )}
                 </span>
                 <div>
                   <h2 className="text-sm font-semibold">{selected.person}</h2>
                   <p className="mt-1 text-[10px] text-[#7b8078]">
-                    {selected.accountType} · Project thread
+                    {typingUser?.conversationId === selected.id
+                      ? "Typing..."
+                      : `${selected.accountType} · ${selected.online ? "Online" : "Offline"}`}
                   </p>
                 </div>
               </div>
@@ -259,10 +556,7 @@ export function MessagesDashboard({
                 onClick={createMeeting}
                 className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-black/10 px-3 text-xs font-semibold"
               >
-                <Icon
-                  icon="solar:videocamera-record-linear"
-                  width="18"
-                />
+                <Icon icon="solar:videocamera-record-linear" width="18" />
                 Create meeting
               </button>
             </header>
@@ -297,6 +591,7 @@ export function MessagesDashboard({
                   This project thread is ready. Send the first message.
                 </p>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             <div className="shrink-0 border-t border-black/7 bg-white p-4">
@@ -311,11 +606,23 @@ export function MessagesDashboard({
                 </button>
                 <textarea
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    socketRef.current?.emit("typing:set", {
+                      conversationId: selected.id,
+                      isTyping: Boolean(event.target.value.trim()),
+                    });
+                  }}
+                  onBlur={() =>
+                    socketRef.current?.emit("typing:set", {
+                      conversationId: selected.id,
+                      isTyping: false,
+                    })
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
-                      sendMessage();
+                      void sendMessage();
                     }
                   }}
                   rows={1}
@@ -324,9 +631,10 @@ export function MessagesDashboard({
                 />
                 <button
                   type="button"
-                  onClick={sendMessage}
+                  onClick={() => void sendMessage()}
+                  disabled={sending}
                   aria-label="Send message"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#252724] text-white"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#252724] text-white disabled:opacity-50"
                 >
                   <Icon icon="solar:plain-2-bold" width="18" />
                 </button>
@@ -339,10 +647,15 @@ export function MessagesDashboard({
               <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#edf4ea] text-[#52784f]">
                 <Icon icon="solar:chat-round-dots-linear" width="30" />
               </span>
-              <h2 className="mt-5 font-semibold">Select a project thread</h2>
+              <h2 className="mt-5 font-semibold">
+                {inboxLoading
+                  ? "Loading conversation..."
+                  : "Conversation does not exist"}
+              </h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-[#7b8078]">
-                Review proposals, interviews, meetings, contract offers,
-                milestones, and payments in one place.
+                {inboxLoading
+                  ? "Please wait while the conversation is loaded."
+                  : "The conversation ID is missing or you do not have access to it."}
               </p>
             </div>
           </section>
@@ -352,6 +665,7 @@ export function MessagesDashboard({
         <AttachmentModal
           file={selectedFile}
           error={fileError}
+          uploading={sending}
           onChoose={chooseFile}
           onClose={() => {
             setAttachmentOpen(false);
@@ -368,12 +682,14 @@ export function MessagesDashboard({
 function AttachmentModal({
   file,
   error,
+  uploading,
   onChoose,
   onClose,
   onAttach,
 }: {
   file: File | null;
   error: string;
+  uploading: boolean;
   onChoose: (file?: File) => void;
   onClose: () => void;
   onAttach: () => void;
@@ -385,29 +701,73 @@ function AttachmentModal({
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#edf4ea] text-[#52784f]">
             <Icon icon="solar:paperclip-linear" width="23" />
           </span>
-          <button type="button" onClick={onClose} aria-label="Close attachment modal" className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-black/8">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close attachment modal"
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-black/8"
+          >
             <Icon icon="solar:close-circle-linear" width="19" />
           </button>
         </div>
         <h2 className="mt-4 text-xl font-semibold">Add an attachment</h2>
-        <p className="mt-2 text-sm leading-6 text-[#737970]">Review the file before sharing it in this project thread.</p>
+        <p className="mt-2 text-sm leading-6 text-[#737970]">
+          Review the file before sharing it in this project thread.
+        </p>
         <label className="mt-5 flex cursor-pointer flex-col items-center rounded-2xl border border-dashed border-black/15 bg-[#fafbf9] px-5 py-8 text-center">
-          <Icon icon="solar:upload-minimalistic-linear" width="25" className="text-[#52784f]" />
+          <Icon
+            icon="solar:upload-minimalistic-linear"
+            width="25"
+            className="text-[#52784f]"
+          />
           <span className="mt-2 text-sm font-semibold">Choose a file</span>
-          <span className="mt-1 text-[11px] text-[#858a82]">PDF, DOCX, PNG, JPG, or TXT · Maximum 5 MB</span>
-          <input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg,.txt" className="sr-only" onChange={(event) => onChoose(event.target.files?.[0])} />
+          <span className="mt-1 text-[11px] text-[#858a82]">
+            PDF, DOCX, PNG, JPG, or TXT · Maximum 5 MB
+          </span>
+          <input
+            type="file"
+            accept=".pdf,.docx,.png,.jpg,.jpeg,.txt"
+            className="sr-only"
+            onChange={(event) => onChoose(event.target.files?.[0])}
+          />
         </label>
         {file && (
           <div className="mt-4 flex items-center gap-3 rounded-xl bg-[#f0f3ee] p-3">
             <Icon icon="solar:file-text-linear" width="21" />
-            <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{file.name}</p><p className="mt-0.5 text-[10px] text-[#858a82]">{(file.size / 1024 / 1024).toFixed(1)} MB</p></div>
-            <Icon icon="solar:check-circle-bold" width="19" className="text-[#5d8759]" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold">{file.name}</p>
+              <p className="mt-0.5 text-[10px] text-[#858a82]">
+                {(file.size / 1024 / 1024).toFixed(1)} MB
+              </p>
+            </div>
+            <Icon
+              icon="solar:check-circle-bold"
+              width="19"
+              className="text-[#5d8759]"
+            />
           </div>
         )}
-        {error && <p role="alert" className="mt-3 text-xs font-medium text-[#9a5953]">{error}</p>}
+        {error && (
+          <p role="alert" className="mt-3 text-xs font-medium text-[#9a5953]">
+            {error}
+          </p>
+        )}
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="h-10 rounded-xl border border-black/10 px-4 text-sm font-semibold">Cancel</button>
-          <button type="button" onClick={onAttach} disabled={!file} className="h-10 rounded-xl bg-[#252724] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-35">Attach file</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-xl border border-black/10 px-4 text-sm font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onAttach}
+            disabled={!file || uploading}
+            className="h-10 rounded-xl bg-[#252724] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            {uploading ? "Uploading…" : "Attach file"}
+          </button>
         </div>
       </div>
     </div>
@@ -464,20 +824,33 @@ function TransactionMessage({
           )}
           <p>{message.text}</p>
           {message.attachment && (
-            <div className={`mt-3 flex items-center gap-3 rounded-xl p-3 ${message.sender === "client" ? "bg-white/10" : "bg-white"}`}>
+            <div
+              className={`mt-3 flex items-center gap-3 rounded-xl p-3 ${message.sender === "client" ? "bg-white/10" : "bg-white"}`}
+            >
               <Icon icon="solar:file-text-linear" width="20" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold">{message.attachment.name}</span>
-                <span className="block text-[9px] opacity-60">{message.attachment.size}</span>
+                <span className="block truncate text-xs font-semibold">
+                  {message.attachment.name}
+                </span>
+                <span className="block text-[9px] opacity-60">
+                  {message.attachment.size}
+                </span>
               </span>
-              <Icon icon="solar:download-minimalistic-linear" width="17" />
+              {message.attachment.url && (
+                <a
+                  href={message.attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Download ${message.attachment.name}`}
+                >
+                  <Icon icon="solar:download-minimalistic-linear" width="17" />
+                </a>
+              )}
             </div>
           )}
           <p
             className={`mt-1 text-[9px] ${
-              message.sender === "client"
-                ? "text-white/50"
-                : "text-[#8a8f87]"
+              message.sender === "client" ? "text-white/50" : "text-[#8a8f87]"
             }`}
           >
             {message.time}
@@ -501,9 +874,7 @@ function TransactionMessage({
             {message.title}
           </p>
         </div>
-        <strong className="text-xs">
-          ${message.amount.toLocaleString()}
-        </strong>
+        <strong className="text-xs">${message.amount.toLocaleString()}</strong>
       </div>
     );
   }
@@ -643,115 +1014,4 @@ function EventFooter({
       </a>
     </div>
   );
-}
-
-function seedTransactionConversation(
-  person?: string,
-  action?: string,
-): ClientConversation[] {
-  if (!person) return clientConversations;
-
-  const proposal = clientProposals.find((item) => item.bidder === person);
-  const job = proposal
-    ? clientJobs.find((item) => item.id === proposal.jobId)
-    : undefined;
-  const actionMessages = proposal
-    ? buildActionMessages(proposal, job?.title, action)
-    : [];
-  const existing = clientConversations.find(
-    (conversation) => conversation.person === person,
-  );
-
-  if (existing) {
-    if (!actionMessages.length) return clientConversations;
-    return clientConversations.map((conversation) =>
-      conversation.id === existing.id
-        ? {
-            ...conversation,
-            context: `${job?.title ?? conversation.context} proposal`,
-            contextHref: `/proposals?job=${proposal?.jobId ?? 1}`,
-            lastMessage:
-              action === "contract-offer"
-                ? "Contract offer sent — awaiting acceptance."
-                : "Interview started — continue the conversation.",
-            time: "Now",
-            messages: [...conversation.messages, ...actionMessages],
-          }
-        : conversation,
-    );
-  }
-
-  if (!proposal) return clientConversations;
-  return [
-    ...clientConversations,
-    {
-      id: 1000 + proposal.id,
-      person: proposal.bidder,
-      initials: proposal.initials,
-      accountType: proposal.accountType,
-      context: `${job?.title ?? "Job"} proposal`,
-      contextHref: `/proposals?job=${proposal.jobId}`,
-      online: proposal.online,
-      unread: 0,
-      lastMessage:
-        action === "contract-offer"
-          ? "Contract offer sent — awaiting acceptance."
-          : "Interview started — continue the conversation.",
-      time: "Now",
-      messages: actionMessages,
-    },
-  ];
-}
-
-function buildActionMessages(
-  proposal: ClientProposal,
-  jobTitle?: string,
-  action?: string,
-): ClientMessage[] {
-  if (!action) return [];
-  const timestamp = Date.now();
-  const proposalMessage: ClientMessage = {
-    id: timestamp,
-    kind: "proposal",
-    sender: "talent",
-    title: jobTitle ?? "Project proposal",
-    bid: proposal.bid,
-    duration: proposal.duration,
-    summary: proposal.coverLetter,
-    skills: proposal.skills,
-    href: `/proposals?job=${proposal.jobId}`,
-    time: "Now",
-  };
-
-  if (action === "contract-offer") {
-    return [
-      proposalMessage,
-      {
-        id: timestamp + 1,
-        kind: "contract",
-        sender: "client",
-        title: jobTitle ?? "Project contract",
-        amount: proposal.bid,
-        status: "Awaiting acceptance",
-        href: "/contracts",
-        time: "Now",
-      },
-    ];
-  }
-
-  if (action === "interview") {
-    return [
-      proposalMessage,
-      {
-        id: timestamp + 1,
-        kind: "text",
-        sender: "client",
-        text: "We reviewed your proposal and would like to start an interview. Please share your availability and any questions before we meet.",
-        time: "Now",
-        replyToId: timestamp,
-      },
-    ];
-  }
-
-  return [];
 }

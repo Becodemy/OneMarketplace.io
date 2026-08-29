@@ -10,6 +10,7 @@ import {
   submitProposal,
   updateProposal,
   shortlistProposal,
+  startProposalInterview,
 } from "./proposals.service.js";
 import { sendNotification } from "../../events/publisher.js";
 
@@ -123,6 +124,46 @@ export const updateProposalStatus: RequestHandler = asyncHandler(
       success: true,
       message: "Proposal marked as viewed.",
       data: proposal,
+    });
+  },
+);
+
+export const interviewProposal: RequestHandler = asyncHandler(
+  async (request, response) => {
+    if (!request.auth || request.auth.role !== "client") {
+      throw new ApiError(403, "A client account is required.");
+    }
+
+    const message = requireText(request.body?.message, "Interview message");
+    if (message.length > 5_000) {
+      throw new ApiError(
+        400,
+        "Interview message cannot exceed 5,000 characters.",
+      );
+    }
+
+    const result = await startProposalInterview(
+      requireText(request.params.proposalId, "Proposal"),
+      request.auth.userId,
+      message,
+    );
+
+    await sendNotification({
+      recipientId: result.freelancerId,
+      type: "PROPOSAL_INTERVIEWED",
+      title: "You received an interview",
+      message: `A client started an interview for “${result.jobTitle}”.`,
+      link: `/messages?conversationId=${result.conversationId}`,
+      metadata: {
+        proposalId: result.proposalId,
+        conversationId: result.conversationId,
+      },
+    });
+
+    response.status(201).json({
+      success: true,
+      message: "Interview started.",
+      data: result,
     });
   },
 );

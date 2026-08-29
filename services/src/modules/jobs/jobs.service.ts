@@ -11,60 +11,13 @@ import { ApiError } from "../../utils/api-error.js";
 import { imageKit } from "../../config/imageKit.js";
 import { env } from "../../config/env.js";
 import { randomUUID } from "crypto";
+import { deleteDocuments, uploadDocuments } from "../../utils/upload-documents.js";
 
 type JobData = Omit<typeof job_posts.$inferInsert, "client_id">;
 type Attachment = NonNullable<JobData["attachments"]>[number];
 
-const deleteDocuments = (attachments: Attachment[] = []) =>
-  Promise.allSettled(
-    attachments
-      .filter(({ fileId }) => fileId)
-      .map(({ fileId }) => imageKit.files.delete(fileId)),
-  );
-
-const uploadDocuments = async (
-  userId: string,
-  attachments: Attachment[] = [],
-) => {
-  const uploaded: Attachment[] = [];
-  const uploadedIds: string[] = [];
-
-  try {
-    for (const attachment of attachments) {
-      if (!attachment.fileUrl.startsWith("data:")) {
-        uploaded.push(attachment);
-        continue;
-      }
-
-      if (!env.imageKitPrivateKey) {
-        throw new ApiError(503, "Document uploads are not configured.");
-      }
-
-      const file = await imageKit.files.upload({
-        file: attachment.fileUrl,
-        fileName: `job-document-${randomUUID()}`,
-        folder: `/onemarketplace/job-attachments/${userId}`,
-      });
-
-      if (!file.fileId || !file.url) {
-        throw new ApiError(502, "Document upload failed.");
-      }
-
-      uploaded.push({ ...attachment, fileId: file.fileId, fileUrl: file.url });
-      uploadedIds.push(file.fileId);
-    }
-
-    return { attachments: uploaded, uploadedIds };
-  } catch (error) {
-    await Promise.allSettled(
-      uploadedIds.map((fileId) => imageKit.files.delete(fileId)),
-    );
-    throw error;
-  }
-};
-
 export const createJobPost = async (userId: string, data: JobData) => {
-  const { attachments, uploadedIds } = await uploadDocuments(
+  const { documents: attachments, uploadedIds } = await uploadDocuments(
     userId,
     data.attachments ?? [],
   );
@@ -127,7 +80,7 @@ export const updateJobPost = async (
 
   if (!existingJob) throw new ApiError(404, "Editable job post not found.");
 
-  const { attachments, uploadedIds } = await uploadDocuments(
+  const { documents: attachments, uploadedIds } = await uploadDocuments(
     userId,
     data.attachments ?? [],
   );

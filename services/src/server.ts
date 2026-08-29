@@ -1,4 +1,4 @@
-import { Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import { SERVICE_NAME } from "./config/constants.js";
 import { env } from "./config/env.js";
 import { app } from "./app.js";
@@ -8,6 +8,7 @@ import {
   startNotificationConsumer,
   stopNotificationConsumer,
 } from "./events/consumer.js";
+import { initializeMessagingSocket } from "./modules/messaging/messaging.socket.js";
 
 let server: Server | undefined;
 let isShuttingDown = false;
@@ -16,7 +17,9 @@ const start = async (): Promise<void> => {
   await connectRedis();
   await startNotificationConsumer();
 
-  server = app.listen(env.port, () => {
+  server = createServer(app);
+  initializeMessagingSocket(server);
+  server.listen(env.port, () => {
     console.log(
       `${SERVICE_NAME} listening on http://localhost:${env.port} in ${env.nodeEnv} mode`,
     );

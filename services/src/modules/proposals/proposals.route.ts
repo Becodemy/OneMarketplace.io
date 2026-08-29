@@ -4,6 +4,7 @@ import {
   createProposal,
   getProposalMetadata,
   getProposals,
+  interviewProposal,
   updateProposalStatus,
 } from "./proposals.controller.js";
 
@@ -16,4 +17,9 @@ proposalRouter.patch(
   "/:proposalId/status",
   isAuthenticated,
   updateProposalStatus,
+);
+proposalRouter.post(
+  "/:proposalId/interview",
+  isAuthenticated,
+  interviewProposal,
 );

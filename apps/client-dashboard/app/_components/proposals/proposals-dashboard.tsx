@@ -27,6 +27,8 @@ export function ProposalsDashboard({
   const [proposals, setProposals] = useState<ClientProposal[]>([]);
   const [selectedProposal, setSelectedProposal] =
     useState<ClientProposal | null>(null);
+  const [interviewProposal, setInterviewProposal] =
+    useState<ClientProposal | null>(null);
   const [notice, setNotice] = useState("");
   const [page, setPage] = useState(1);
 
@@ -73,7 +75,10 @@ export function ProposalsDashboard({
       }));
     },
   });
-  const { data: proposalData = emptyProposalData,isLoading: proposalsLoading } = useQuery<any[]>({
+  const {
+    data: proposalData = emptyProposalData,
+    isLoading: proposalsLoading,
+  } = useQuery<any[]>({
     queryKey: ["client-proposals", selectedJobId],
     enabled: Boolean(selectedJobId),
     queryFn: async () => {
@@ -181,11 +186,8 @@ export function ProposalsDashboard({
   };
 
   const startInterview = (proposal: ClientProposal) => {
-    updateStatus(proposal.id, "Interview");
     setSelectedProposal(null);
-    router.push(
-      `/messages?person=${encodeURIComponent(proposal.bidder)}&action=interview`,
-    );
+    setInterviewProposal(proposal);
   };
 
   const hireProposal = (proposal: ClientProposal) => {
@@ -249,6 +251,29 @@ export function ProposalsDashboard({
           : "Proposal could not be shortlisted.",
       );
     }
+  };
+
+  const submitInterview = async (message: string) => {
+    if (!interviewProposal) return;
+    const token = await getToken();
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_SERVER_URI}/proposals/${interviewProposal.id}/interview?role=client`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      },
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.message || "Interview could not be started.");
+    }
+    updateStatus(interviewProposal.id, "Interview");
+    setInterviewProposal(null);
+    router.push(`/messages?conversationId=${result.data.conversationId}`);
   };
 
   if (!selectedJob) {
@@ -323,7 +348,7 @@ export function ProposalsDashboard({
         <div className="grid gap-4 sm:grid-cols-4">
           <JobMetric
             label="Fixed budget"
-            value={`$${selectedJob.budget.toLocaleString()}`}
+            value={`$${selectedJob?.budget?.toLocaleString()}`}
           />
           <JobMetric label="Proposals" value={String(selectedJob.proposals)} />
           <JobMetric
@@ -459,6 +484,14 @@ export function ProposalsDashboard({
           onHire={() => hireProposal(selectedProposal)}
         />
       )}
+
+      {interviewProposal && (
+        <StartInterviewModal
+          proposal={interviewProposal}
+          onClose={() => setInterviewProposal(null)}
+          onSubmit={submitInterview}
+        />
+      )}
     </>
   );
 }
@@ -583,7 +616,7 @@ function JobProposalCard({
             </div>
             <h2 className="mt-3 text-lg font-semibold">{job.title}</h2>
             <p className="mt-2 text-xs text-[#757b73]">
-              Fixed price · ${job.budget.toLocaleString()} · {job.level} ·{" "}
+              Fixed price · ${job?.budget?.toLocaleString()} · {job.level} ·{" "}
               {job.duration}
             </p>
             <p className="mt-4 line-clamp-2 max-w-4xl text-sm leading-6 text-[#6f756d]">
@@ -976,4 +1009,89 @@ function getProfileHref(proposal: ClientProposal) {
   return proposal.accountType === "Agency"
     ? `/agency/${proposal.id}`
     : `/talent/${proposal.freelancerId}`;
+}
+
+function StartInterviewModal({
+  proposal,
+  onClose,
+  onSubmit,
+}: {
+  proposal: ClientProposal;
+  onClose: () => void;
+  onSubmit: (message: string) => Promise<void>;
+}) {
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  return (
+    <div
+      className="fixed inset-0 z-60 grid place-items-center bg-[#172018]/50 p-5 backdrop-blur-[3px]"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <form
+        className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl sm:p-7"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (!message.trim() || isSubmitting) return;
+          setError("");
+          setIsSubmitting(true);
+          try {
+            await onSubmit(message.trim());
+          } catch (submitError) {
+            setError(
+              submitError instanceof Error
+                ? submitError.message
+                : "Interview could not be started.",
+            );
+            setIsSubmitting(false);
+          }
+        }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[.12em] text-[#62805f] uppercase">
+              Start interview
+            </p>
+            <h2 className="mt-2 text-xl font-semibold">
+              Message {proposal.bidder}
+            </h2>
+            <p className="mt-2 text-sm text-[#747a72]">
+              Introduce yourself and explain the next step in the interview.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} disabled={isSubmitting}>
+            <Icon icon="solar:close-circle-linear" width="24" />
+          </button>
+        </div>
+        <textarea
+          autoFocus
+          required
+          maxLength={5000}
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          placeholder="Hi, I reviewed your proposal and would like to discuss..."
+          className="mt-5 min-h-36 w-full resize-y rounded-xl border border-black/10 p-4 text-sm outline-none focus:border-[#62805f]"
+        />
+        {error && <p className="mt-2 text-xs text-[#9a5a5a]">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="h-11 rounded-xl border border-black/10 px-4 text-xs font-semibold disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!message.trim() || isSubmitting}
+            className="h-11 rounded-xl bg-[#252724] px-5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSubmitting ? "Starting..." : "Start interview"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }

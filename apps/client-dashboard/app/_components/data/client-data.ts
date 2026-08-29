@@ -103,7 +103,7 @@ export const clientJobs: ClientJob[] = [
 ];
 
 export type ClientProposal = {
-  id: number | string;
+  id: number;
   freelancerId?: string;
   jobId: number | string;
   bidder: string;
@@ -613,9 +613,10 @@ export const completedClientContracts: CompletedClientContract[] = [
 ];
 
 export type ClientConversation = {
-  id: number;
+  id: number | string;
   person: string;
   initials: string;
+  avatarUrl?: string | null;
   accountType: "Freelancer" | "Agency";
   context: string;
   contextHref: string;
@@ -628,20 +629,21 @@ export type ClientConversation = {
 
 export type ClientMessage =
   | {
-      id: number;
+      id: number | string;
       kind: "text";
       sender: "client" | "talent";
       text: string;
       time: string;
-      replyToId?: number;
+      replyToId?: number | string;
       attachment?: {
         name: string;
         size: string;
         type: string;
+        url?: string;
       };
     }
   | {
-      id: number;
+      id: number | string;
       kind: "proposal";
       sender: "talent";
       title: string;
@@ -653,7 +655,7 @@ export type ClientMessage =
       time: string;
     }
   | {
-      id: number;
+      id: number | string;
       kind: "meeting";
       sender: "client" | "talent";
       title: string;
@@ -662,7 +664,7 @@ export type ClientMessage =
       time: string;
     }
   | {
-      id: number;
+      id: number | string;
       kind: "contract";
       sender: "client";
       title: string;
@@ -672,7 +674,7 @@ export type ClientMessage =
       time: string;
     }
   | {
-      id: number;
+      id: number | string;
       kind: "milestone";
       sender: "client" | "talent";
       title: string;
@@ -682,7 +684,7 @@ export type ClientMessage =
       time: string;
     }
   | {
-      id: number;
+      id: number | string;
       kind: "payment";
       sender: "system";
       title: string;
@@ -690,161 +692,3 @@ export type ClientMessage =
       status: "Protected in escrow" | "Released";
       time: string;
     };
-
-export const clientConversations: ClientConversation[] = [
-  {
-    id: 1,
-    person: "Northstar Digital",
-    initials: "ND",
-    accountType: "Agency",
-    context: "Collaborative healthcare workspace",
-    contextHref: "/contracts",
-    online: true,
-    unread: 2,
-    lastMessage: "The updated prototype is ready for review.",
-    time: "8m",
-    messages: [
-      {
-        id: 1,
-        kind: "contract",
-        sender: "client",
-        title: "Collaborative healthcare workspace",
-        amount: 42000,
-        status: "Active",
-        href: "/contracts",
-        time: "June 18",
-      },
-      {
-        id: 2,
-        kind: "milestone",
-        sender: "client",
-        title: "Collaboration milestone",
-        amount: 12000,
-        status: "Funded",
-        href: "/contracts",
-        time: "August 2",
-      },
-      {
-        id: 3,
-        kind: "payment",
-        sender: "system",
-        title: "Collaboration milestone",
-        amount: 12000,
-        status: "Protected in escrow",
-        time: "August 2",
-      },
-      {
-        id: 4,
-        kind: "text",
-        sender: "client",
-        text: "Can you share the updated notification prototype?",
-        time: "10:42 AM",
-      },
-      {
-        id: 5,
-        kind: "text",
-        sender: "talent",
-        text: "Yes—the updated prototype is ready for review. We also included the accessibility notes.",
-        time: "10:51 AM",
-      },
-      {
-        id: 6,
-        kind: "milestone",
-        sender: "talent",
-        title: "Collaboration milestone",
-        amount: 12000,
-        status: "Submitted",
-        href: "/contracts",
-        time: "10:52 AM",
-      },
-    ],
-  },
-  {
-    id: 2,
-    person: "Shahriar Sajeeb",
-    initials: "SK",
-    accountType: "Freelancer",
-    context: "SaaS analytics dashboard",
-    contextHref: "/contracts",
-    online: true,
-    unread: 0,
-    lastMessage: "I’ll share the responsive build tomorrow.",
-    time: "2h",
-    messages: [
-      {
-        id: 1,
-        kind: "milestone",
-        sender: "client",
-        title: "Dashboard implementation",
-        amount: 3000,
-        status: "Funded",
-        href: "/contracts",
-        time: "July 21",
-      },
-      {
-        id: 2,
-        kind: "text",
-        sender: "talent",
-        text: "The main dashboard views are complete. I’ll share the responsive build tomorrow.",
-        time: "8:35 AM",
-      },
-      {
-        id: 3,
-        kind: "text",
-        sender: "client",
-        text: "Great, thank you. The current direction looks strong.",
-        time: "8:41 AM",
-      },
-    ],
-  },
-  {
-    id: 3,
-    person: "Daniel Cho",
-    initials: "DC",
-    accountType: "Freelancer",
-    context: "Senior Next.js developer proposal",
-    contextHref: "/proposals",
-    online: false,
-    unread: 1,
-    lastMessage: "Happy to walk through the architecture.",
-    time: "1d",
-    messages: [
-      {
-        id: 1,
-        kind: "proposal",
-        sender: "talent",
-        title: "Senior Next.js developer for a collaborative workspace",
-        bid: 10800,
-        duration: "12 weeks",
-        summary:
-          "High-scale WebSocket services and collaborative editing interfaces with end-to-end technical ownership.",
-        skills: ["TypeScript", "React", "Node.js", "WebSockets"],
-        href: "/proposals?job=1",
-        time: "Yesterday",
-      },
-      {
-        id: 2,
-        kind: "text",
-        sender: "client",
-        text: "We reviewed your proposal and would like to discuss your architecture approach.",
-        time: "Yesterday",
-      },
-      {
-        id: 3,
-        kind: "meeting",
-        sender: "client",
-        title: "Architecture interview",
-        startsAt: "Today at 3:30 PM",
-        meetUrl: "https://meet.google.com/",
-        time: "Yesterday",
-      },
-      {
-        id: 4,
-        kind: "text",
-        sender: "talent",
-        text: "Happy to walk through the architecture and answer any questions.",
-        time: "Yesterday",
-      },
-    ],
-  },
-];

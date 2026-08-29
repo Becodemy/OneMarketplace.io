@@ -8,6 +8,7 @@ import { jobRouter } from "../modules/jobs/jobs.route.js";
 import { connectsRouter } from "../modules/connects/connects.route.js";
 import { notificationRouter } from "../modules/notifications/notifications.route.js";
 import { proposalRouter } from "../modules/proposals/proposals.route.js";
+import { messagingRouter } from "../modules/messaging/messaging.route.js";
 
 export const apiRouter = Router();
 
@@ -18,6 +19,7 @@ apiRouter.use("/jobs", jobRouter);
 apiRouter.use("/connects", connectsRouter);
 apiRouter.use("/notifications", notificationRouter);
 apiRouter.use("/proposals", proposalRouter);
+apiRouter.use("/conversations", messagingRouter);
 
 apiRouter.get("/health", (_request, response) => {
   const body: ApiResponse<{

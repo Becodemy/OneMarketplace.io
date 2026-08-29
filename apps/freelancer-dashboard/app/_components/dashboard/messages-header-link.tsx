@@ -4,13 +4,12 @@ import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { initialConversations } from "../messages/messages-data";
+import { useUnreadMessages } from "@/app/hooks/use-unread-messages";
 
 export function MessagesHeaderLink() {
   const pathname = usePathname();
-  const unreadCount = initialConversations.reduce(
-    (total, conversation) => total + conversation.unread,
-    0,
-  );
+  const unreadCount = useUnreadMessages();
+
   const active = pathname === "/messages";
 
   return (
@@ -24,7 +23,9 @@ export function MessagesHeaderLink() {
       }`}
     >
       <Icon
-        icon={active ? "solar:chat-round-dots-bold" : "solar:chat-round-dots-linear"}
+        icon={
+          active ? "solar:chat-round-dots-bold" : "solar:chat-round-dots-linear"
+        }
         width="22"
       />
       {unreadCount > 0 && (

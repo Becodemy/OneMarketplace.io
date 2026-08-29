@@ -7,13 +7,13 @@ export const metadata: Metadata = { title: "Messages", description: "Communicate
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ person?: string; action?: string }>;
+  searchParams: Promise<{ conversationId?: string }>;
 }) {
-  const { person, action } = await searchParams;
+  const { conversationId } = await searchParams;
 
   return (
     <ClientShell>
-      <MessagesDashboard initialPerson={person} initialAction={action} />
+      <MessagesDashboard conversationId={conversationId} />
     </ClientShell>
   );
 }

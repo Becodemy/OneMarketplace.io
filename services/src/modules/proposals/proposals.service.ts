@@ -1,12 +1,15 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../../database/client.js";
 import {
   accounts,
   client_metadata,
   connects,
   connects_history,
+  conversation_participants,
+  conversations,
   freelancer_metadata,
   job_posts,
+  messages,
   proposals,
 } from "../../database/schema.js";
 import { ApiError } from "../../utils/api-error.js";
@@ -19,6 +22,7 @@ import { redis } from "../../config/redis.js";
 import { env } from "../../config/env.js";
 import { createClerkClient } from "@clerk/backend";
 import { sendNotification } from "../../events/publisher.js";
+import { emitConversationUpdate } from "../messaging/messaging.socket.js";
 
 export const submitProposal = async (
   freelancerId: string,
@@ -289,4 +293,183 @@ export const shortlistProposal = async (
     .returning({ id: proposals.id, isShortlisted: proposals.is_shortlisted });
   if (!proposal) throw new ApiError(404, "Proposal not found.");
   return proposal;
+};
+
+export const startProposalInterview = async (
+  proposalId: string,
+  clientId: string,
+  openingMessage: string,
+) => {
+  const result = await db.transaction(async (transaction) => {
+    const [proposal] = await transaction
+      .select({
+        id: proposals.id,
+        freelancerId: proposals.sender_id,
+        coverLetter: proposals.cover_letter,
+        jobId: proposals.job_id,
+        jobTitle: job_posts.title,
+      })
+      .from(proposals)
+      .innerJoin(job_posts, eq(proposals.job_id, job_posts.id))
+      .where(
+        and(eq(proposals.id, proposalId), eq(job_posts.client_id, clientId)),
+      )
+      .limit(1);
+    if (!proposal) throw new ApiError(404, "Proposal not found.");
+
+    const [interviewed] = await transaction
+      .update(proposals)
+      .set({ status: "INTERVIEWED", updated_at: new Date() })
+      .where(
+        and(
+          eq(proposals.id, proposal.id),
+          inArray(proposals.status, ["SUBMITTED", "VIEWED"]),
+        ),
+      )
+      .returning({ id: proposals.id });
+    if (!interviewed) {
+      throw new ApiError(409, "Interview has already been started.");
+    }
+
+    const contextKey = `job:${proposal.jobId}:client:${clientId}:talent:${proposal.freelancerId}`;
+    const [createdConversation] = await transaction
+      .insert(conversations)
+      .values({
+        job_id: proposal.jobId,
+        proposal_id: proposal.id,
+        context_key: contextKey,
+      })
+      .onConflictDoNothing({ target: conversations.context_key })
+      .returning({ id: conversations.id });
+
+    const conversation =
+      createdConversation ??
+      (
+        await transaction
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.context_key, contextKey))
+          .limit(1)
+      )[0];
+
+    if (!conversation) {
+      throw new ApiError(500, "Conversation could not be created.");
+    }
+
+    await transaction
+      .insert(conversation_participants)
+      .values([
+        {
+          conversation_id: conversation.id,
+          account_id: clientId,
+          participant_type: "CLIENT",
+        },
+        {
+          conversation_id: conversation.id,
+          account_id: proposal.freelancerId,
+          participant_type: "FREELANCER",
+        },
+      ])
+      .onConflictDoNothing();
+
+    const now = new Date();
+
+    const [proposalMessage] = await transaction
+      .insert(messages)
+      .values({
+        conversation_id: conversation.id,
+        sender_id: proposal.freelancerId,
+        body: proposal.coverLetter,
+        created_at: now,
+      })
+      .returning({ id: messages.id, createdAt: messages.created_at });
+    if (!proposalMessage) {
+      throw new ApiError(500, "Interview messages could not be created.");
+    }
+
+    const [clientMessage] = await transaction
+      .insert(messages)
+      .values({
+        conversation_id: conversation.id,
+        sender_id: clientId,
+        body: openingMessage,
+        reply_to_message_id: proposalMessage.id,
+        created_at: new Date(now.getTime() + 1),
+      })
+      .returning({ id: messages.id, createdAt: messages.created_at });
+
+    if (!clientMessage) {
+      throw new ApiError(500, "Interview messages could not be created.");
+    }
+
+    await transaction
+      .update(conversations)
+      .set({
+        proposal_id: proposal.id,
+        last_message_id: clientMessage.id,
+        last_message_at: clientMessage.createdAt,
+        updated_at: new Date(),
+      })
+      .where(eq(conversations.id, conversation.id));
+
+    await transaction
+      .update(conversation_participants)
+      .set({
+        last_read_message_id: clientMessage.id,
+        last_read_at: new Date(),
+        unread_count: 0,
+      })
+      .where(
+        and(
+          eq(conversation_participants.conversation_id, conversation.id),
+          eq(conversation_participants.account_id, clientId),
+        ),
+      );
+
+    await transaction
+      .update(conversation_participants)
+      .set({
+        unread_count: sql`${conversation_participants.unread_count} + 1`,
+      })
+      .where(
+        and(
+          eq(conversation_participants.conversation_id, conversation.id),
+          eq(conversation_participants.account_id, proposal.freelancerId),
+        ),
+      );
+
+    const [balance] = await transaction
+      .update(connects)
+      .set({
+        connects: sql`${connects.connects} + ${PROPOSAL_CONNECTS}`,
+        updated_at: new Date(),
+      })
+      .where(eq(connects.freelancer_id, proposal.freelancerId))
+      .returning();
+    if (!balance) throw new ApiError(404, "Connects balance not found.");
+
+    await transaction.insert(connects_history).values({
+      connects_id: balance.id,
+      type: "Interview started refund",
+      description: proposal.jobTitle,
+      amount: PROPOSAL_CONNECTS,
+    });
+
+    return {
+      conversationId: conversation.id,
+      proposalId: proposal.id,
+      freelancerId: proposal.freelancerId,
+      jobTitle: proposal.jobTitle,
+      connects: balance.connects,
+    };
+  });
+
+  await redis.setEx(
+    getConnectsCacheKey(result.freelancerId),
+    CONNECTS_CACHE_TTL_SECONDS,
+    String(result.connects),
+  );
+
+  await emitConversationUpdate(result.conversationId);
+  return result;
 };

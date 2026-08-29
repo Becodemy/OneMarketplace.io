@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { BrandMark } from "../brand-mark";
-import { clientConversations } from "../data/client-data";
 import { MarketplaceSearchModal } from "../discovery/marketplace-search-modal";
 import { clientHeaderNavigation } from "./navigation";
 import { getToken, useClerk, useUser } from "@clerk/nextjs";
@@ -16,38 +15,11 @@ import {
   useNotifications,
   useNotificationStream,
 } from "@/app/hooks/use-notifications";
-
-const notifications = [
-  {
-    id: 1,
-    title: "New proposal received",
-    detail: "Northstar Digital applied to your Next.js project.",
-    href: "/proposals",
-    unread: true,
-  },
-  {
-    id: 2,
-    title: "Milestone submitted",
-    detail: "The collaboration milestone is ready for review.",
-    href: "/contracts",
-    unread: true,
-  },
-  {
-    id: 3,
-    title: "Contract update",
-    detail: "Escrow funding was confirmed.",
-    href: "/contracts",
-    unread: false,
-  },
-];
+import { useUnreadMessages } from "@/app/hooks/use-unread-messages";
 
 export function ClientHeader() {
   const pathname = usePathname();
-
-  const unreadMessages = clientConversations.reduce(
-    (sum, item) => sum + item.unread,
-    0,
-  );
+  const unreadMessages = useUnreadMessages();
 
   return (
     <header className="sticky top-0 z-40 border-b border-black/7 bg-white/95 backdrop-blur">

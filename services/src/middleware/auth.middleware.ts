@@ -71,6 +71,32 @@ const isAccountAvailable = async (
   return accountAuth;
 };
 
+export const authenticateAccount = async (
+  token: unknown,
+  requestedRole: unknown,
+) => {
+  if (typeof token !== "string" || !token) {
+    throw new ApiError(401, "Authentication token is required.");
+  }
+  if (!isAccountRole(requestedRole)) {
+    throw new ApiError(400, "A valid account role is required.");
+  }
+  if (!env.clerkSecretKey) {
+    throw new ApiError(503, "Authentication is not configured.");
+  }
+
+  try {
+    const claims = await verifyToken(token, { secretKey: env.clerkSecretKey });
+    return {
+      ...(await isAccountAvailable(requestedRole, claims.sub)),
+      sessionId: typeof claims.sid === "string" ? claims.sid : undefined,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(401, "Authentication token is invalid or expired.");
+  }
+};
+
 export const isAuthenticated: RequestHandler = asyncHandler(
   async (request, _response, next) => {
     const token = getBearerToken(request?.headers.authorization);
