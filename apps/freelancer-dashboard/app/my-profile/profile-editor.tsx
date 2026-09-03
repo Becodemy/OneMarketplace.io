@@ -11,7 +11,6 @@ import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ProfileSkeleton } from "./profile-skelton";
 import { countries } from "@/utils/countries";
-import { useRouter } from "next/navigation";
 import { UserResource } from "@clerk/nextjs/types";
 
 type PreviewPortfolio = {
@@ -575,7 +574,6 @@ export function ProfileEditor({
   const [savedDynamicValues, setSavedDynamicValues] = useState(() =>
     JSON.stringify({ skills: [], languages: initialLanguages, portfolio: [] }),
   );
-  const router = useRouter();
   const queryClient = useQueryClient();
   const hasInitializedProfile = useRef(false);
 

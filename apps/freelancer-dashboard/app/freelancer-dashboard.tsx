@@ -713,7 +713,7 @@ export function FreelancerDashboard() {
               <p className="mt-2 text-xs leading-5 text-[#667064]">
                 {profileMetaDataLoading || !isLoaded
                   ? "..."
-                  : strengthSuggestions}
+                  : strengthSuggestions.join(" ")}
               </p>
               <Link
                 href="/my-profile"
