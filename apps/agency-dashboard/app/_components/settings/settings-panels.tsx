@@ -3,7 +3,6 @@
 import { Icon } from "@iconify/react";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AgencySettingsSectionId } from "./settings-data";
 
@@ -171,7 +170,10 @@ export function OverviewPanel({
       </div>
       <div className="border-t border-black/7 px-5 py-4 text-xs text-[#737870] sm:px-6">
         Financial settings and Connects are managed from the{" "}
-        <a href="/finances?section=overview" className="font-semibold text-[#52784f] hover:underline">
+        <a
+          href="/finances?section=overview"
+          className="font-semibold text-[#52784f] hover:underline"
+        >
           Finances page
         </a>
         .
@@ -224,7 +226,6 @@ const buildSnapshot = (fields: {
 
 export function ProfilePanel() {
   const { getToken } = useAuth();
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -236,7 +237,9 @@ export function ProfilePanel() {
   const [size, setSize] = useState("");
   const [overview, setOverview] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [avatarImageId, setAvatarImageId] = useState<string | undefined>(undefined);
+  const [avatarImageId, setAvatarImageId] = useState<string | undefined>(
+    undefined,
+  );
   const [agencyTags, setAgencyTags] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [snapshot, setSnapshot] = useState("");
@@ -289,7 +292,9 @@ export function ProfilePanel() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || "The agency profile could not be loaded.");
+        throw new Error(
+          result.message || "The agency profile could not be loaded.",
+        );
       }
 
       return result.data as AgencyProfileData | null;
@@ -307,42 +312,46 @@ export function ProfilePanel() {
     const loadedOverview = agency.overview;
     const loadedTags = agency.tags.join(", ");
     const loadedAvatarUrl = agency.avatarImage?.url ?? "";
-    const loadedPortfolio: PortfolioFormItem[] = agency.portfolio.map((item) => ({
-      id: item.id,
-      title: item.title,
-      category: item.category,
-      description: item.description,
-      link: item.liveUrl ?? "",
-      coverUrl: item.coverImage.url,
-      coverImageId: item.coverImage.imageId,
-    }));
-
-    setName(loadedName);
-    setWebsite(loadedWebsite);
-    setProfessionalTitle(loadedProfessionalTitle);
-    setSpecialty(loadedSpecialty);
-    setSize(loadedSize);
-    setOverview(loadedOverview);
-    setAgencyTags(loadedTags);
-    if (agency.avatarImage) {
-      setAvatarUrl(agency.avatarImage.url);
-      setAvatarImageId(agency.avatarImage.imageId);
-    }
-    setPortfolio(loadedPortfolio);
-    setSnapshot(
-      buildSnapshot({
-        name: loadedName,
-        website: loadedWebsite,
-        professionalTitle: loadedProfessionalTitle,
-        specialty: loadedSpecialty,
-        size: loadedSize,
-        overview: loadedOverview,
-        tags: agency.tags,
-        avatarUrl: loadedAvatarUrl,
-        portfolio: loadedPortfolio,
+    const loadedPortfolio: PortfolioFormItem[] = agency.portfolio.map(
+      (item) => ({
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        description: item.description,
+        link: item.liveUrl ?? "",
+        coverUrl: item.coverImage.url,
+        coverImageId: item.coverImage.imageId,
       }),
     );
-    setHydrated(true);
+
+    void Promise.resolve().then(() => {
+      setName(loadedName);
+      setWebsite(loadedWebsite);
+      setProfessionalTitle(loadedProfessionalTitle);
+      setSpecialty(loadedSpecialty);
+      setSize(loadedSize);
+      setOverview(loadedOverview);
+      setAgencyTags(loadedTags);
+      if (agency.avatarImage) {
+        setAvatarUrl(agency.avatarImage.url);
+        setAvatarImageId(agency.avatarImage.imageId);
+      }
+      setPortfolio(loadedPortfolio);
+      setSnapshot(
+        buildSnapshot({
+          name: loadedName,
+          website: loadedWebsite,
+          professionalTitle: loadedProfessionalTitle,
+          specialty: loadedSpecialty,
+          size: loadedSize,
+          overview: loadedOverview,
+          tags: agency.tags,
+          avatarUrl: loadedAvatarUrl,
+          portfolio: loadedPortfolio,
+        }),
+      );
+      setHydrated(true);
+    });
   }, [agency, hydrated]);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -388,15 +397,19 @@ export function ProfilePanel() {
       );
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result.message || "The agency profile could not be saved.");
+        throw new Error(
+          result.message || "The agency profile could not be saved.",
+        );
       }
 
       await queryClient.invalidateQueries({ queryKey: ["agency-mine"] });
       setSaved(true);
-      router.push("/profile");
+      window.location.assign("/profile");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "The agency profile could not be saved.",
+        err instanceof Error
+          ? err.message
+          : "The agency profile could not be saved.",
       );
     } finally {
       setSaving(false);
@@ -470,7 +483,12 @@ export function ProfilePanel() {
         </section>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Agency name" value={name} onChange={setName} />
-          <Field label="Website" value={website} onChange={setWebsite} type="url" />
+          <Field
+            label="Website"
+            value={website}
+            onChange={setWebsite}
+            type="url"
+          />
         </div>
         <Field
           label="Profile title"
@@ -482,13 +500,23 @@ export function ProfilePanel() {
             label="Primary specialty"
             value={specialty}
             onChange={setSpecialty}
-            options={["Web & software development", "Design & creative", "Data & AI", "Marketing"]}
+            options={[
+              "Web & software development",
+              "Design & creative",
+              "Data & AI",
+              "Marketing",
+            ]}
           />
           <SelectField
             label="Agency size"
             value={size}
             onChange={setSize}
-            options={["2–5 members", "6–10 members", "11–25 members", "26+ members"]}
+            options={[
+              "2–5 members",
+              "6–10 members",
+              "11–25 members",
+              "26+ members",
+            ]}
           />
         </div>
         <label className="text-xs font-semibold">
@@ -514,8 +542,8 @@ export function ProfilePanel() {
           <p
             className={`mt-2 text-[10px] ${hasEnoughTags ? "text-[#8b9088]" : "text-[#a4453d]"}`}
           >
-            Separate tags with commas. Add at least 5 tags ({tagList.length}/5) —
-            these appear on your public profile and help clients discover your
+            Separate tags with commas. Add at least 5 tags ({tagList.length}/5)
+            — these appear on your public profile and help clients discover your
             agency.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -699,7 +727,8 @@ export function ProfilePanel() {
           <p className="text-xs text-[#a4453d]">
             Before you can save: {!hasAvatar && "add an avatar"}
             {!hasAvatar && (!hasEnoughTags || !hasPortfolioItem) && ", "}
-            {!hasEnoughTags && `add ${5 - tagList.length} more tag${5 - tagList.length === 1 ? "" : "s"}`}
+            {!hasEnoughTags &&
+              `add ${5 - tagList.length} more tag${5 - tagList.length === 1 ? "" : "s"}`}
             {!hasEnoughTags && !hasPortfolioItem && ", "}
             {!hasPortfolioItem && "add at least 1 portfolio project"}.
           </p>
@@ -906,8 +935,8 @@ export function VerificationPanel() {
           )}
         </div>
         <p className="mt-4 rounded-xl bg-[#f3f6f1] p-4 text-xs leading-5 text-[#667064]">
-          Stripe securely handles identity information. OneMarketplace does
-          not manually collect or review identity documents.
+          Stripe securely handles identity information. OneMarketplace does not
+          manually collect or review identity documents.
         </p>
       </div>
 
@@ -930,8 +959,8 @@ export function VerificationPanel() {
             <h2 className="mt-4 text-xl font-semibold">Verify your identity</h2>
             <p className="mt-2 text-sm leading-6 text-[#737970]">
               You&apos;ll be redirected to Stripe to securely verify your
-              identity as the agency owner. OneMarketplace does not store
-              your identity document.
+              identity as the agency owner. OneMarketplace does not store your
+              identity document.
             </p>
             {error && <p className="mt-4 text-xs text-red-600">{error}</p>}
             <div className="mt-6 flex justify-end gap-2">
@@ -985,9 +1014,8 @@ export function NotificationsPanel() {
         ))}
       </div>
       <p className="border-t border-black/7 px-5 py-4 text-xs leading-5 text-[#7b8078] sm:px-6">
-        Every current team member sees these updates in the notification bell
-        in real time. Per-notification preferences aren&apos;t configurable
-        yet.
+        Every current team member sees these updates in the notification bell in
+        real time. Per-notification preferences aren&apos;t configurable yet.
       </p>
     </Panel>
   );

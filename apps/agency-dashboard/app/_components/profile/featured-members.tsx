@@ -33,8 +33,8 @@ export function FeaturedMembers({ members }: { members: FeaturedMember[] }) {
   const [expanded, setExpanded] = useState(false);
   const visibleMembers = expanded ? members : members.slice(0, 4);
   const remainingCount = members.length - 4;
-  const clientDashboardUrl =
-    process.env.NEXT_PUBLIC_CLIENT_DASHBOARD ?? "http://localhost:3002";
+  const landingPageUrl =
+    process.env.NEXT_PUBLIC_LANDING_PAGE ?? "http://localhost:3000";
 
   if (members.length === 0) {
     return (
@@ -56,7 +56,7 @@ export function FeaturedMembers({ members }: { members: FeaturedMember[] }) {
               key={member.id}
               href={
                 member.profileId
-                  ? `${clientDashboardUrl}/talent/${member.profileId}`
+                  ? `${landingPageUrl}/talent/${member.profileId}`
                   : "#"
               }
               target={member.profileId ? "_blank" : undefined}
