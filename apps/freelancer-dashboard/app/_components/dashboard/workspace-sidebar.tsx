@@ -93,7 +93,7 @@ export function WorkspaceSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="grid gap-5 xl:sticky xl:top-24">
+    <aside className="grid min-w-0 gap-5 xl:sticky xl:top-24">
       {profileLoading ? (
         <section
           aria-label="Loading profile summary"
@@ -117,7 +117,7 @@ export function WorkspaceSidebar() {
           </div>
         </section>
       ) : (
-        <section className="rounded-2xl border border-black/8 bg-white p-5">
+        <section className="min-w-0 rounded-2xl border border-black/8 bg-white p-5">
           <div className="flex items-center gap-3">
             <Image
               src={user?.imageUrl!}
