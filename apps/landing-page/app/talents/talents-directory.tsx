@@ -229,7 +229,7 @@ function TalentCard({ talent }: { talent: Talent }) {
 
   return (
     <article className="rounded-2xl border border-black/8 bg-white p-5 transition hover:border-black/12 sm:p-6">
-      <div className="flex items-start gap-4">
+      <div className="flex flex-wrap items-start gap-4">
         {talent.avatarUrl ? (
           <Image
             src={talent.avatarUrl}
@@ -247,14 +247,22 @@ function TalentCard({ talent }: { talent: Talent }) {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className={`${styles.uiHeading} truncate text-base sm:text-lg`}>
-              {talent.name}
-            </h2>
-            {talent.verified && <VerifiedBadge />}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2
+                className={`${styles.uiHeading} truncate text-base sm:text-lg`}
+              >
+                {talent.name}
+              </h2>
+              {talent.verified && <VerifiedBadge />}
+            </div>
+            <p className="shrink-0 text-sm font-semibold">
+              ${talent.hourlyRate}
+              <span className="font-normal text-[#83877f]">/hr</span>
+            </p>
           </div>
           <p className="mt-1 truncate text-sm text-[#686c65]">{talent.title}</p>
-          <div className="mt-2 flex items-center gap-2 text-xs text-[#777b74]">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#777b74]">
             <span
               className={`h-2 w-2 rounded-full ${
                 talent.active ? "bg-[#5a9b59]" : "bg-[#b5b8b2]"
@@ -269,10 +277,6 @@ function TalentCard({ talent }: { talent: Talent }) {
             )}
           </div>
         </div>
-        <p className="shrink-0 text-sm font-semibold">
-          ${talent.hourlyRate}
-          <span className="font-normal text-[#83877f]">/hr</span>
-        </p>
       </div>
 
       <p className="mt-5 line-clamp-3 text-sm leading-6 text-[#656962]">

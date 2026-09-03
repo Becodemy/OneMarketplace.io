@@ -21,8 +21,13 @@ export function LoginForm() {
   const isLoading = fetchStatus === "fetching";
 
   function goToBackendSync(sessionRole: unknown, token: string | null) {
-    if (typeof sessionRole !== "string" || !token) {
-      throw new Error("Something went wrong");
+    if (typeof sessionRole !== "string") {
+      window.location.assign("/error?reason=account_not_registered");
+      return;
+    }
+    if (!token) {
+      window.location.assign("/error?reason=invalid_or_expired_token");
+      return;
     }
     window.location.assign(
       `/api/sign-up?token=${encodeURIComponent(token)}&role=${encodeURIComponent(sessionRole)}`,

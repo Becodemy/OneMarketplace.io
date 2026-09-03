@@ -13,6 +13,8 @@ const errorMessages: Record<string, string> = {
     "We authenticated your account but could not finish setting it up.",
   invalid_or_expired_token:
     "Your authentication session is invalid or has expired. Please sign up again.",
+  account_not_registered:
+    "We couldn't find an account for that sign-in. If you're new here, please sign up first.",
 };
 
 interface ErrorPageProps {
