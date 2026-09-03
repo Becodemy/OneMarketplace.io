@@ -544,6 +544,7 @@ export function ProfileEditor({
     handleSubmit,
     clearErrors,
     reset,
+    trigger,
     control,
     setError,
     formState: { errors, isDirty, isValid },
@@ -661,7 +662,13 @@ export function ProfileEditor({
       }),
     );
     hasInitializedProfile.current = true;
-  }, [isLoaded, profileMetaData, profileMetaDataLoading, reset, user]);
+
+    // Without a resolver, react-hook-form's `isValid` isn't reliably
+    // recomputed by reset() alone — it needs an explicit trigger() to
+    // revalidate against the values just loaded in, or the Save button
+    // stays disabled even though every field is actually filled in.
+    void trigger();
+  }, [isLoaded, profileMetaData, profileMetaDataLoading, reset, trigger, user]);
 
   const updateLanguage = (index: number, update: Partial<Language>) => {
     setLanguages((current) =>
@@ -798,7 +805,7 @@ export function ProfileEditor({
       setSaved(true);
       toast.success("Profile saved successfully.");
       window.setTimeout(() => setSaved(false), 3000);
-      router.push("/my-profile");
+      window.location.assign("/my-profile");
     },
     onError: (error) => {
       toast.error(
