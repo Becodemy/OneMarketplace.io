@@ -126,7 +126,7 @@ export function WorkspaceSidebar() {
               height={40}
               className="flex object-cover h-12 w-12 items-center justify-center rounded-full"
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 className="flex items-center gap-1.5 truncate font-semibold">
                 <span className="truncate">{user?.fullName}</span>
                 {profileMetaData?.identityVerified && (
