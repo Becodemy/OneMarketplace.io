@@ -15,7 +15,7 @@ const accountItems = [
     icon: "solar:user-circle-linear",
   },
   {
-    href: "/settings",
+    href: "/settings?section=overview",
     label: "Account settings",
     description: "Payments, security, and preferences",
     icon: "solar:settings-linear",

@@ -106,7 +106,7 @@ export function AgencySidebar() {
           </div>
         </section>
       ) : (
-        <section className="rounded-2xl border border-black/8 bg-white p-5">
+        <section className="min-w-0 rounded-2xl border border-black/8 bg-white p-5">
           <div className="flex items-center gap-3">
             {agency?.avatarImage ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -170,10 +170,9 @@ export function AgencySidebar() {
       )}
       <nav className="rounded-2xl border border-black/8 bg-white p-2 text-sm">
         {agencyNavigation.map((item) => {
+          const itemPath = item.href.split("?")[0];
           const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+            itemPath === "/" ? pathname === "/" : pathname.startsWith(itemPath);
           return (
             <Link
               key={item.href}

@@ -56,9 +56,9 @@ const mapContract = (contract: ApiContract): Contract => {
   const activeMilestone = contract.milestones.find(
     (milestone) => milestone.status === "ACTIVE",
   );
-  const current = activeMilestone ?? contract.milestones.find(
-    (milestone) => milestone.status !== "COMPLETED",
-  );
+  const current =
+    activeMilestone ??
+    contract.milestones.find((milestone) => milestone.status !== "COMPLETED");
 
   return {
     id: contract.id,
@@ -135,11 +135,9 @@ export function ContractsDashboard() {
 
   useEffect(() => {
     const contractId = searchParams.get("contractId");
-    setSelected(
-      contractId
-        ? (contracts.find(({ id }) => id === contractId) ?? null)
-        : null,
-    );
+    if (!contractId) return;
+    const match = contracts.find(({ id }) => id === contractId);
+    if (match) setSelected(match);
   }, [contracts, searchParams]);
 
   const acceptContract = async (contract: Contract) => {
@@ -247,19 +245,23 @@ export function ContractsDashboard() {
     (total, contract) => total + contract.totalAmount,
     0,
   );
-  const earned = data.flatMap((contract) => contract.milestones).reduce(
-    (total, milestone) =>
-      total + (milestone.status === "COMPLETED" ? milestone.amount : 0),
-    0,
-  );
-  const funded = data.flatMap((contract) => contract.milestones).reduce(
-    (total, milestone) =>
-      total +
-      (milestone.fundedAt && milestone.status !== "COMPLETED"
-        ? milestone.amount
-        : 0),
-    0,
-  );
+  const earned = data
+    .flatMap((contract) => contract.milestones)
+    .reduce(
+      (total, milestone) =>
+        total + (milestone.status === "COMPLETED" ? milestone.amount : 0),
+      0,
+    );
+  const funded = data
+    .flatMap((contract) => contract.milestones)
+    .reduce(
+      (total, milestone) =>
+        total +
+        (milestone.fundedAt && milestone.status !== "COMPLETED"
+          ? milestone.amount
+          : 0),
+      0,
+    );
 
   return (
     <div className="min-h-svh bg-[#f4f6f2] font-(family-name:--font-dm-sans) text-[#242724]">
@@ -334,16 +336,18 @@ export function ContractsDashboard() {
 
             <section className="mt-6 flex flex-col gap-4 rounded-2xl border border-black/8 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-1 overflow-x-auto">
-                {["All running", "Pending", "Active", "Completed"].map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setStatus(item)}
-                    className={`shrink-0 cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold ${status === item ? "bg-[#edf4ea] text-[#4e774b]" : "text-[#747971] hover:bg-black/3"}`}
-                  >
-                    {item}
-                  </button>
-                ))}
+                {["All running", "Pending", "Active", "Completed"].map(
+                  (item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setStatus(item)}
+                      className={`shrink-0 cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold ${status === item ? "bg-[#edf4ea] text-[#4e774b]" : "text-[#747971] hover:bg-black/3"}`}
+                    >
+                      {item}
+                    </button>
+                  ),
+                )}
               </div>
               <label className="flex h-10 items-center gap-2 rounded-xl border border-black/9 px-3 sm:w-72">
                 <Icon
@@ -397,6 +401,7 @@ export function ContractsDashboard() {
         <ContractDrawer
           contract={selected}
           onClose={() => {
+            setSelected(null);
             router.replace("/contracts");
           }}
           onSubmit={() => {
@@ -419,7 +424,11 @@ export function ContractsDashboard() {
         <ContractReviewModal
           contractTitle={reviewTarget.title}
           revieweeName={reviewTarget.client}
-          actionLabel={reviewTarget.status === "Completed" ? "Submit review" : "Finish contract"}
+          actionLabel={
+            reviewTarget.status === "Completed"
+              ? "Submit review"
+              : "Finish contract"
+          }
           onClose={() => setReviewTarget(null)}
           onSubmit={(input) => finishContract(reviewTarget, input)}
         />

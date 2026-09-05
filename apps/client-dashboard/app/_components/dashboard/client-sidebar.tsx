@@ -84,10 +84,11 @@ export function ClientSidebar() {
       </section>
       <nav className="mt-5 rounded-2xl border border-black/8 bg-white p-2">
         {clientSidebarNavigation.map((item) => {
+          const itemPath = item.href.split("?")[0];
           const active =
-            item.href === "/"
+            itemPath === "/"
               ? pathname === "/"
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+              : pathname === itemPath || pathname.startsWith(`${itemPath}/`);
           return (
             <Link
               key={item.href}

@@ -11,5 +11,9 @@ export const clientSidebarNavigation = [
   { href: "/proposals", label: "Proposals", icon: "solar:users-group-rounded-linear" },
   { href: "/contracts", label: "Contracts", icon: "solar:case-round-linear" },
   { href: "/messages", label: "Messages", icon: "solar:chat-round-dots-linear" },
-  { href: "/settings", label: "Settings", icon: "solar:settings-linear" },
+  {
+    href: "/settings?section=overview",
+    label: "Settings",
+    icon: "solar:settings-linear",
+  },
 ] as const;

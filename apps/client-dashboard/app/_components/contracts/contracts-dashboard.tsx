@@ -122,11 +122,9 @@ export function ContractsDashboard() {
 
   useEffect(() => {
     const contractId = searchParams.get("contractId");
-    setSelected(
-      contractId
-        ? (contracts.find(({ id }) => id === contractId) ?? null)
-        : null,
-    );
+    if (!contractId) return;
+    const match = contracts.find(({ id }) => id === contractId);
+    if (match) setSelected(match);
   }, [contracts, searchParams]);
 
   useEffect(() => {
@@ -287,8 +285,7 @@ export function ContractsDashboard() {
         <Summary
           label="Active contracts"
           value={String(
-            contracts.filter((contract) => contract.status === "Active")
-              .length,
+            contracts.filter((contract) => contract.status === "Active").length,
           )}
         />
         <Summary
@@ -394,6 +391,7 @@ export function ContractsDashboard() {
         <ContractDrawer
           contract={selected}
           onClose={() => {
+            setSelected(null);
             router.replace("/contracts");
           }}
           onApprove={approve}
@@ -518,9 +516,9 @@ function ContractDrawer({
               Milestone payment protection
             </p>
             <p className="mt-1 text-[10px] leading-5 text-[#637061]">
-              Funded payments remain protected until milestones are approved.
-              We release payment to the freelancer only after the work is
-              submitted and you confirm that the milestone is complete.
+              Funded payments remain protected until milestones are approved. We
+              release payment to the freelancer only after the work is submitted
+              and you confirm that the milestone is complete.
             </p>
           </div>
         </div>
@@ -535,8 +533,7 @@ function ContractDrawer({
                 .every((previous) => previous.status === "Paid") &&
               !contract.milestones.some(
                 (item) =>
-                  item.status === "In progress" ||
-                  item.status === "Submitted",
+                  item.status === "In progress" || item.status === "Submitted",
               );
 
             return (
@@ -544,88 +541,88 @@ function ContractDrawer({
                 key={milestone.id}
                 className={`rounded-xl border p-4 transition-colors ${tone.card}`}
               >
-              <div className="flex justify-between gap-4">
-                <div className="flex min-w-0 gap-3">
-                  <span
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${tone.marker}`}
-                  >
-                    {milestone.status === "Paid" ? (
-                      <Icon icon="solar:check-read-linear" width="15" />
-                    ) : (
-                      index + 1
-                    )}
-                  </span>
-                  <div>
-                    <p className="text-xs font-semibold">{milestone.title}</p>
+                <div className="flex justify-between gap-4">
+                  <div className="flex min-w-0 gap-3">
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${tone.marker}`}
+                    >
+                      {milestone.status === "Paid" ? (
+                        <Icon icon="solar:check-read-linear" width="15" />
+                      ) : (
+                        index + 1
+                      )}
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold">{milestone.title}</p>
+                      <p className="mt-1 text-[10px] text-[#858a82]">
+                        Due {milestone.due}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs font-semibold">
+                      ${milestone.amount.toLocaleString()}
+                    </p>
                     <p className="mt-1 text-[10px] text-[#858a82]">
-                      Due {milestone.due}
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 font-semibold ${tone.badge}`}
+                      >
+                        {milestone.status}
+                      </span>
                     </p>
                   </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <p className="text-xs font-semibold">
-                    ${milestone.amount.toLocaleString()}
-                  </p>
-                  <p className="mt-1 text-[10px] text-[#858a82]">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-1 font-semibold ${tone.badge}`}
+                {milestone.status === "Submitted" &&
+                  milestone.submissionComment && (
+                    <div className="mt-4 rounded-xl bg-white/80 p-3">
+                      <p className="flex items-center gap-1.5 text-[9px] font-semibold tracking-wide text-[#70806d] uppercase">
+                        <Icon icon="solar:letter-linear" width="14" />
+                        Freelancer submission comment
+                      </p>
+                      <p className="mt-2 text-[11px] leading-5 text-[#616860]">
+                        {milestone.submissionComment}
+                      </p>
+                    </div>
+                  )}
+                {milestone.status === "Submitted" && (
+                  <div className="mt-4 flex justify-end gap-2 border-t border-black/7 pt-4">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDecision({ type: "changes", milestone })
+                      }
+                      className="h-9 cursor-pointer rounded-lg border border-black/10 px-3 text-xs font-semibold"
                     >
-                      {milestone.status}
-                    </span>
-                  </p>
-                </div>
-              </div>
-              {milestone.status === "Submitted" &&
-                milestone.submissionComment && (
-                  <div className="mt-4 rounded-xl bg-white/80 p-3">
-                    <p className="flex items-center gap-1.5 text-[9px] font-semibold tracking-wide text-[#70806d] uppercase">
-                      <Icon icon="solar:letter-linear" width="14" />
-                      Freelancer submission comment
-                    </p>
-                    <p className="mt-2 text-[11px] leading-5 text-[#616860]">
-                      {milestone.submissionComment}
-                    </p>
+                      Request changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDecision({ type: "approve", milestone })
+                      }
+                      className="h-9 cursor-pointer rounded-lg bg-[#252724] px-3 text-xs font-semibold text-white"
+                    >
+                      Approve & release
+                    </button>
                   </div>
                 )}
-              {milestone.status === "Submitted" && (
-                <div className="mt-4 flex justify-end gap-2 border-t border-black/7 pt-4">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDecision({ type: "changes", milestone })
-                    }
-                    className="h-9 cursor-pointer rounded-lg border border-black/10 px-3 text-xs font-semibold"
-                  >
-                    Request changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDecision({ type: "approve", milestone })
-                    }
-                    className="h-9 cursor-pointer rounded-lg bg-[#252724] px-3 text-xs font-semibold text-white"
-                  >
-                    Approve & release
-                  </button>
-                </div>
-              )}
-              {canActivate && (
-                <div className="mt-4 flex flex-col justify-between gap-3 border-t border-black/7 pt-4 sm:flex-row sm:items-center">
-                  <p className="text-[10px] leading-5 text-[#747b72]">
-                    Previous work is complete. Fund this milestone to begin the
-                    next phase.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDecision({ type: "activate", milestone })
-                    }
-                    className="h-9 shrink-0 cursor-pointer rounded-lg bg-[#52784f] px-3 text-xs font-semibold text-white"
-                  >
-                    Activate milestone
-                  </button>
-                </div>
-              )}
+                {canActivate && (
+                  <div className="mt-4 flex flex-col justify-between gap-3 border-t border-black/7 pt-4 sm:flex-row sm:items-center">
+                    <p className="text-[10px] leading-5 text-[#747b72]">
+                      Previous work is complete. Fund this milestone to begin
+                      the next phase.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDecision({ type: "activate", milestone })
+                      }
+                      className="h-9 shrink-0 cursor-pointer rounded-lg bg-[#52784f] px-3 text-xs font-semibold text-white"
+                    >
+                      Activate milestone
+                    </button>
+                  </div>
+                )}
               </article>
             );
           })}
@@ -650,7 +647,11 @@ function ContractDrawer({
         )}
         {contract.status === "Completed" && !contract.reviewedByCurrentUser && (
           <div className="mt-6 flex justify-end border-t border-black/8 pt-5">
-            <button type="button" onClick={onFinish} className="h-10 cursor-pointer rounded-xl bg-[#252724] px-4 text-xs font-semibold text-white">
+            <button
+              type="button"
+              onClick={onFinish}
+              className="h-10 cursor-pointer rounded-xl bg-[#252724] px-4 text-xs font-semibold text-white"
+            >
               Give review
             </button>
           </div>
@@ -709,27 +710,77 @@ function ContractReviewModal({
           void onSubmit({ rating, comment: comment.trim() })
             .then(onClose)
             .catch((error) => {
-              setError(error instanceof Error ? error.message : "Review could not be submitted.");
+              setError(
+                error instanceof Error
+                  ? error.message
+                  : "Review could not be submitted.",
+              );
               setSaving(false);
             });
         }}
       >
         <div className="flex items-start justify-between gap-4">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#edf4ea] text-[#52784f]"><Icon icon="solar:star-bold" width="22" /></span>
-          <button type="button" onClick={onClose} disabled={saving} aria-label="Close review modal"><Icon icon="solar:close-circle-linear" width="23" /></button>
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#edf4ea] text-[#52784f]">
+            <Icon icon="solar:star-bold" width="22" />
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close review modal"
+          >
+            <Icon icon="solar:close-circle-linear" width="23" />
+          </button>
         </div>
         <h2 className="mt-4 text-xl font-semibold">Review {contract.talent}</h2>
-        <p className="mt-2 text-sm text-[#737970]">Share your experience from “{contract.title}”. A review is required to finish the contract.</p>
+        <p className="mt-2 text-sm text-[#737970]">
+          Share your experience from “{contract.title}”. A review is required to
+          finish the contract.
+        </p>
         <div className="mt-5 flex gap-1" aria-label="Rating">
           {[1, 2, 3, 4, 5].map((value) => (
-            <button key={value} type="button" onClick={() => setRating(value)} className={value <= rating ? "text-[#d5a62e]" : "text-[#d9ddd7]"} aria-label={`${value} stars`}><Icon icon="solar:star-bold" width="30" /></button>
+            <button
+              key={value}
+              type="button"
+              onClick={() => setRating(value)}
+              className={value <= rating ? "text-[#d5a62e]" : "text-[#d9ddd7]"}
+              aria-label={`${value} stars`}
+            >
+              <Icon icon="solar:star-bold" width="30" />
+            </button>
           ))}
         </div>
-        <textarea required minLength={10} maxLength={1000} rows={5} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Write your review..." className="mt-5 w-full resize-none rounded-xl border border-black/10 p-3 text-sm outline-none focus:border-[#6e916a]" />
+        <textarea
+          required
+          minLength={10}
+          maxLength={1000}
+          rows={5}
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+          placeholder="Write your review..."
+          className="mt-5 w-full resize-none rounded-xl border border-black/10 p-3 text-sm outline-none focus:border-[#6e916a]"
+        />
         {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="h-10 rounded-xl border border-black/10 px-4 text-xs font-semibold">Cancel</button>
-          <button type="submit" disabled={saving || rating === 0 || comment.trim().length < 10} className="h-10 rounded-xl bg-[#252724] px-4 text-xs font-semibold text-white disabled:opacity-40">{saving ? "Submitting…" : contract.status === "Completed" ? "Submit review" : "Finish contract"}</button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="h-10 rounded-xl border border-black/10 px-4 text-xs font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || rating === 0 || comment.trim().length < 10}
+            className="h-10 rounded-xl bg-[#252724] px-4 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            {saving
+              ? "Submitting…"
+              : contract.status === "Completed"
+                ? "Submit review"
+                : "Finish contract"}
+          </button>
         </div>
       </form>
     </div>
@@ -767,11 +818,17 @@ function AddMilestoneModal({
           event.preventDefault();
           setSaving(true);
           setError("");
-          void onSubmit({ title: title.trim(), amount: Number(amount), dueDate })
+          void onSubmit({
+            title: title.trim(),
+            amount: Number(amount),
+            dueDate,
+          })
             .then(onClose)
             .catch((error) => {
               setError(
-                error instanceof Error ? error.message : "Milestone could not be added.",
+                error instanceof Error
+                  ? error.message
+                  : "Milestone could not be added.",
               );
               setSaving(false);
             });
@@ -869,7 +926,9 @@ function MilestoneDecisionModal({
     event.preventDefault();
     const normalizedFeedback = feedback.trim();
     if (normalizedFeedback.length < 10) {
-      setError("Please describe the requested update in at least 10 characters.");
+      setError(
+        "Please describe the requested update in at least 10 characters.",
+      );
       return;
     }
     onRequestChanges(normalizedFeedback);
@@ -990,9 +1049,9 @@ function MilestoneDecisionModal({
               className="shrink-0 text-[#52784f]"
             />
             <p className="text-[10px] leading-5 text-[#5c6b59]">
-              Your payment stays protected until it's released. It will not
-              be released to {contract.talent} until work is submitted and
-              you approve the completed milestone.
+              Your payment stays protected until it's released. It will not be
+              released to {contract.talent} until work is submitted and you
+              approve the completed milestone.
             </p>
           </div>
 
@@ -1046,9 +1105,7 @@ function MilestoneDecisionModal({
               />
               <p className="text-xs leading-5 text-[#536250]">
                 Approving will release{" "}
-                <strong>
-                  ${decision.milestone.amount.toLocaleString()}
-                </strong>{" "}
+                <strong>${decision.milestone.amount.toLocaleString()}</strong>{" "}
                 to {contract.talent} and permanently mark this milestone as
                 completed.
               </p>

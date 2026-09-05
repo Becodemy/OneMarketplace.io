@@ -184,7 +184,7 @@ export function WorkspaceSidebar() {
 
       <nav className="rounded-2xl border border-black/8 bg-white p-2 text-sm">
         {sidebarNavigation.map((item) => {
-          const active = pathname === item.href;
+          const active = pathname === item.href.split("?")[0];
           return (
             <Link
               key={item.label}
